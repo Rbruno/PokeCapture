@@ -121,9 +121,37 @@
                     try {
                         const sdk = new check.value('es');
                         log('sdk-result', `✅ SDK inicializado correctamente`, 'success');
+                        
+                        // Verificar si Query está disponible
+                        let Query = null;
+                        if (check.value.Query) {
+                            Query = check.value.Query;
+                            log('sdk-result', `✅ Query está disponible`, 'success');
+                        } else if (sdk.Query) {
+                            Query = sdk.Query;
+                            log('sdk-result', `✅ Query está disponible en la instancia`, 'success');
+                        } else {
+                            log('sdk-result', `⚠️ Query no está disponible`, 'error');
+                        }
+                        
                         try {
-                            const cards = await sdk.card.list();
-                            log('sdk-result', `✅ SDK funciona! Obtuvo ${cards.length} cartas`, 'success');
+                            // Probar obtener todas las cartas
+                            const allCards = await sdk.card.list();
+                            log('sdk-result', `✅ SDK funciona! Obtuvo ${allCards.length} cartas`, 'success');
+                            
+                            // Si Query está disponible, probar búsqueda
+                            if (Query) {
+                                try {
+                                    log('sdk-result', `🔍 Probando búsqueda con Query...`, 'info');
+                                    const query = Query.create().equal('name', 'Pikachu');
+                                    const pikachuCards = await sdk.card.list(query);
+                                    const count = Array.isArray(pikachuCards) ? pikachuCards.length : (pikachuCards.data ? pikachuCards.data.length : 'N/A');
+                                    log('sdk-result', `✅ Query funciona! Encontró ${count} cartas de Pikachu`, 'success');
+                                } catch (queryError) {
+                                    log('sdk-result', `❌ Error con Query: ${queryError.message}`, 'error');
+                                }
+                            }
+                            
                             found = true;
                         } catch (error) {
                             log('sdk-result', `❌ Error al obtener cartas: ${error.message}`, 'error');
