@@ -232,25 +232,28 @@ async function openCardsModal(pokemon) {
         baseUrl: ''
     };
     
-    // Encontrar la query que funciona
-    const API_KEY = '3ca5dcd8-ef83-472a-92a8-e9d0155cdeb2';
+    // Usar TCGdx API (https://tcgdx.dev/) - API de código abierto sin problemas de CORS
     const pokemonNameForSearch = pokemon.name.toLowerCase();
-    const baseUrl = 'https://api.pokemontcg.io/v2/cards';
-    const query = encodeURIComponent(`name:${pokemonNameForSearch}`);
+    const searchName = capitalizeFirst(pokemon.name);
+    
+    // TCGdx API endpoints - probar en español primero, luego inglés
+    const baseUrl = 'https://api.tcgdx.dev/v2/es/cards'; // Español
+    const baseUrlEn = 'https://api.tcgdx.dev/v2/en/cards'; // Inglés como fallback
     
     // Guardar información de paginación
-    state.cardsPagination.query = query;
+    state.cardsPagination.query = pokemonNameForSearch;
     state.cardsPagination.baseUrl = baseUrl;
+    state.cardsPagination.baseUrlEn = baseUrlEn;
     
     // Cargar primera página
-    await loadCardsPage(pokemon, 1, query, baseUrl, API_KEY, true);
+    await loadCardsPage(pokemon, 1, pokemonNameForSearch, baseUrl, baseUrlEn, true);
     
     // Configurar scroll infinito
-    setupInfiniteScroll(pokemon, query, baseUrl, API_KEY);
+    setupInfiniteScroll(pokemon, pokemonNameForSearch, baseUrl, baseUrlEn);
 }
 
-// Cargar una página de cartas con reintentos
-async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad = false, retryCount = 0) {
+// Cargar una página de cartas con reintentos (usando TCGdx API)
+async function loadCardsPage(pokemon, page, pokemonName, baseUrl, baseUrlEn, isFirstLoad = false, retryCount = 0) {
     if (state.cardsPagination.loading || !state.cardsPagination.hasMore) {
         return;
     }
@@ -267,98 +270,91 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
     }
     
     try {
-        // La API de Pokémon TCG bloquea CORS incluso desde GitHub Pages
-        // Intentar múltiples estrategias: proxy con headers, proxy sin headers, directo
-        const queryParams = `q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
-        const targetUrl = `${baseUrl}?${queryParams}`;
-        
+        // Usar TCGdx API (https://tcgdx.dev/) - API de código abierto sin problemas de CORS
+        // TCGdx no requiere API key y permite CORS desde cualquier origen
         let response;
-        let lastError;
-        
-        // Estrategia 1: Intentar directamente (puede funcionar desde GitHub Pages en algunos casos)
-        try {
-            console.log('Intentando solicitud directa...');
-            response = await fetch(targetUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Api-Key': apiKey
-                },
-                mode: 'cors'
-            });
-            
-            if (response.ok) {
-                console.log('✅ Solicitud directa funcionó');
-            } else {
-                throw new Error(`HTTP ${response.status}`);
-            }
-        } catch (directError) {
-            console.log('❌ Solicitud directa falló, usando proxy...');
-            lastError = directError.message;
-            
-            // Estrategia 2: Usar proxy CORS público
-            // Nota: Los proxies públicos no pasan headers, así que la API key no se enviará
-            // La API puede funcionar sin key con límites, o rechazar la solicitud
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-            
-            response = await fetch(proxyUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                },
-                mode: 'cors'
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Proxy error: HTTP ${response.status}`);
-            }
-            
-            console.log('✅ Proxy funcionó (nota: API key no se envió)');
-        }
-        
-        // Si es 504 y es el primer intento, reintentar
-        if (response.status === 504 && retryCount < 2) {
-            console.log(`Error 504, reintentando... (intento ${retryCount + 1}/2)`);
-            state.cardsPagination.loading = false;
-            modalLoading.style.display = 'none';
-            loadingMore.style.display = 'none';
-            
-            // Esperar un poco antes de reintentar
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            return loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad, retryCount + 1);
-        }
-        
-        if (!response.ok) {
-            throw new Error(`Error HTTP ${response.status}`);
-        }
-        
         let data;
-        let responseText = await response.text();
-        
-        // El proxy allorigins.win devuelve el contenido en un objeto con el campo "contents"
-        try {
-            const proxyResponse = JSON.parse(responseText);
-            if (proxyResponse.contents) {
-                // Si el proxy envuelve la respuesta, extraer el contenido
-                data = JSON.parse(proxyResponse.contents);
-            } else {
-                data = proxyResponse;
-            }
-        } catch (e) {
-            // Si no está envuelto, parsear directamente
-            data = JSON.parse(responseText);
-        }
-        
         let fetchedCards = [];
         
-        if (data.data && Array.isArray(data.data)) {
-            fetchedCards = data.data;
-            // Actualizar información de paginación
-            state.cardsPagination.totalCount = data.totalCount || 0;
-            state.cardsPagination.hasMore = fetchedCards.length === state.cardsPagination.pageSize && 
-                                            (data.page * data.pageSize < data.totalCount);
+        // TCGdx API: buscar cartas por nombre
+        // Según la documentación, TCGdx permite búsqueda con parámetros de query
+        // Intentar primero en español, luego en inglés
+        const searchStrategies = [
+            // Estrategia 1: Buscar todas las cartas y filtrar (más confiable)
+            { url: baseUrl, lang: 'es', filter: true },
+            { url: baseUrlEn, lang: 'en', filter: true },
+            // Estrategia 2: Búsqueda directa por nombre (si la API lo soporta)
+            { url: `${baseUrl}?name=${encodeURIComponent(pokemonName)}`, lang: 'es', filter: false },
+            { url: `${baseUrlEn}?name=${encodeURIComponent(pokemonName)}`, lang: 'en', filter: false }
+        ];
+        
+        for (let i = 0; i < searchStrategies.length; i++) {
+            const strategy = searchStrategies[i];
+            try {
+                console.log(`Buscando cartas en ${strategy.lang}...`);
+                response = await fetch(strategy.url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    data = await response.json();
+                    
+                    // TCGdx puede devolver un array directamente o un objeto con data
+                    if (Array.isArray(data)) {
+                        fetchedCards = data;
+                    } else if (data.data && Array.isArray(data.data)) {
+                        fetchedCards = data.data;
+                    } else if (data.cards && Array.isArray(data.cards)) {
+                        fetchedCards = data.cards;
+                    }
+                    
+                    // Filtrar por nombre del Pokémon si es necesario
+                    if (strategy.filter && fetchedCards.length > 0) {
+                        fetchedCards = fetchedCards.filter(card => {
+                            const cardName = (card.name || '').toLowerCase();
+                            const searchNameLower = pokemonName.toLowerCase();
+                            return cardName.includes(searchNameLower) || 
+                                   cardName === searchNameLower ||
+                                   cardName.startsWith(searchNameLower);
+                        });
+                    }
+                    
+                    if (fetchedCards.length > 0) {
+                        console.log(`✅ Encontradas ${fetchedCards.length} cartas en ${strategy.lang}`);
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.log(`Error con estrategia ${i + 1}:`, error.message);
+                if (i === searchStrategies.length - 1) {
+                    throw error;
+                }
+            }
         }
+        
+        // TCGdx devuelve todas las cartas, aplicar paginación manualmente
+        if (page === 1) {
+            // Primera página: guardar todas las cartas
+            state.cardsPagination.allCards = fetchedCards;
+        } else {
+            // Páginas siguientes: usar las cartas ya cargadas
+            fetchedCards = state.cardsPagination.allCards || [];
+        }
+        
+        const pageSize = state.cardsPagination.pageSize;
+        const startIndex = (page - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const paginatedCards = fetchedCards.slice(startIndex, endIndex);
+        
+        // Actualizar información de paginación
+        state.cardsPagination.totalCount = fetchedCards.length;
+        state.cardsPagination.hasMore = endIndex < fetchedCards.length;
+        
+        fetchedCards = paginatedCards;
         
         if (fetchedCards.length === 0 && isFirstLoad) {
             modalLoading.style.display = 'none';
@@ -473,14 +469,20 @@ function renderCards(cards, pokemon) {
             cardElement.classList.add('selected');
         }
         
-        let imageUrl = card.images?.large || 
-                      card.images?.small ||
-                      card.image || 
+        // TCGdx estructura de imágenes
+        let imageUrl = card.image || 
                       card.imageUrl ||
+                      card.images?.large || 
+                      card.images?.small ||
+                      card.images?.normal ||
+                      (card.localId && `https://assets.tcgdx.dev/images/cards/${card.localId}.png`) ||
                       'https://via.placeholder.com/200?text=Carta';
         
         const cardName = card.name || 'Carta sin nombre';
-        const setName = card.set?.name || card.setName || 'Sin set';
+        // TCGdx: set puede ser objeto o string
+        const setName = (typeof card.set === 'string' ? card.set : card.set?.name) || 
+                      card.setName || 
+                      'Sin set';
         
         cardElement.innerHTML = `
             <img src="${imageUrl}" alt="${cardName}" class="card-image" 
@@ -502,7 +504,7 @@ function renderCards(cards, pokemon) {
 }
 
 // Configurar scroll infinito
-function setupInfiniteScroll(pokemon, query, baseUrl, apiKey) {
+function setupInfiniteScroll(pokemon, pokemonName, baseUrl, baseUrlEn) {
     const modalContent = document.querySelector('.modal-content');
     let scrollTimeout;
     
@@ -518,7 +520,7 @@ function setupInfiniteScroll(pokemon, query, baseUrl, apiKey) {
             if (scrollTop + clientHeight >= scrollHeight - 100) {
                 if (state.cardsPagination.hasMore && !state.cardsPagination.loading) {
                     const nextPage = state.cardsPagination.currentPage + 1;
-                    loadCardsPage(pokemon, nextPage, query, baseUrl, apiKey, false);
+                    loadCardsPage(pokemon, nextPage, pokemonName, baseUrl, baseUrlEn, false);
                 }
             }
         }, 100);
