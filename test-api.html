@@ -31,6 +31,10 @@
         button:hover {
             background: #5568d3;
         }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
         pre {
             background: #f0f0f0;
             padding: 15px;
@@ -38,6 +42,8 @@
             overflow-x: auto;
             max-height: 400px;
             overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         .success {
             color: green;
@@ -50,42 +56,204 @@
         .info {
             color: blue;
         }
+        .warning {
+            color: orange;
+        }
     </style>
 </head>
 <body>
     <h1>🧪 Test API TCGdx</h1>
-    <script src="https://cdn.jsdelivr.net/npm/@tcgdex/sdk@2/dist/tcgdex.browser.js"></script>
+    <p>Esta página prueba el SDK de TCGdx desde el CDN</p>
+    
+    <div class="test-section">
+        <h2>1. Verificar SDK</h2>
+        <button onclick="testSDK()">Probar SDK Básico</button>
+        <button onclick="testQuery()">Probar con Query</button>
+        <button onclick="testPikachu()">Buscar Pikachu</button>
+        <div id="sdk-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Resultados</h2>
+        <div id="results"></div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tcgdx/sdk@2/dist/tcgdex.browser.js"></script>
     <script>
-
-
-import TCGdex, { Query } from '@tcgdex/sdk';
-
-const tcgdex = new TCGdex('en');
-// Get a list of all cards
-const allCards = await tcgdex.card.list();
-// Create a query to find Pikachu cards with HP between 60 and 70
-const pikachuCards = await tcgdex.card.list(
-  Query.create()
-    .equal('name', 'Pikachu')  // Match exact name
-    .greaterOrEqualThan('hp', 60)  // HP >= 60
-    .lesserThan('hp', 70)  // HP < 70
-    .sort('localId', 'ASC')  // Sort by ID ascending
-);
-
-// Find cards containing "5" in their ID but not "tg"
-const filteredCards = await tcgdex.card.list(
-  Query.create()
-    .contains('localId', '5')  // ID contains "5"
-    .not.contains('localId', 'tg')  // ID doesn't contain "tg"
-);
-
-// Pagination example - get page 3 with 2 items per page
-const paginatedCards = await tcgdex.card.list(
-  Query.create()
-    .paginate(3, 2)
-);
+        function log(elementId, message, type = 'info') {
+            const div = document.getElementById(elementId);
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info';
+            div.innerHTML += `<p class="${className}">${message}</p>`;
+        }
+        
+        function clear(elementId) {
+            document.getElementById(elementId).innerHTML = '';
+        }
+        
+        function showResults(data, title) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `<h3>${title}</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+        
+        async function testSDK() {
+            clear('sdk-result');
+            log('sdk-result', '🔍 Verificando SDK...', 'info');
+            
+            try {
+                // Verificar si TCGdex está disponible
+                if (typeof TCGdex === 'undefined') {
+                    log('sdk-result', '❌ TCGdex no está disponible', 'error');
+                    return;
+                }
+                
+                log('sdk-result', '✅ TCGdex está disponible', 'success');
+                
+                // Crear instancia
+                const tcgdex = new TCGdex('es');
+                log('sdk-result', '✅ SDK inicializado con idioma español', 'success');
+                
+                // Verificar estructura
+                log('sdk-result', `📋 Estructura: ${Object.keys(tcgdex).join(', ')}`, 'info');
+                
+                // Verificar si card existe
+                if (!tcgdex.card) {
+                    log('sdk-result', '❌ tcgdex.card no existe', 'error');
+                    return;
+                }
+                
+                log('sdk-result', '✅ tcgdex.card existe', 'success');
+                log('sdk-result', `📋 Métodos de card: ${Object.keys(tcgdex.card).join(', ')}`, 'info');
+                
+                // Intentar obtener algunas cartas
+                log('sdk-result', '🔍 Obteniendo primeras 5 cartas...', 'info');
+                const cards = await tcgdex.card.list();
+                
+                if (Array.isArray(cards) && cards.length > 0) {
+                    log('sdk-result', `✅ Obtenidas ${cards.length} cartas`, 'success');
+                    log('sdk-result', `📋 Primera carta: ${cards[0].name || cards[0].id || 'Sin nombre'}`, 'info');
+                    showResults(cards.slice(0, 5), 'Primeras 5 cartas');
+                } else {
+                    log('sdk-result', '⚠️ No se obtuvieron cartas o el formato es inesperado', 'warning');
+                    showResults(cards, 'Resultado completo');
+                }
+                
+            } catch (error) {
+                log('sdk-result', `❌ Error: ${error.message}`, 'error');
+                log('sdk-result', `📋 Stack: ${error.stack}`, 'error');
+            }
+        }
+        
+        async function testQuery() {
+            clear('sdk-result');
+            log('sdk-result', '🔍 Probando Query...', 'info');
+            
+            try {
+                if (typeof TCGdex === 'undefined') {
+                    log('sdk-result', '❌ TCGdex no está disponible', 'error');
+                    return;
+                }
+                
+                // Verificar si Query está disponible
+                let Query = null;
+                if (TCGdex.Query) {
+                    Query = TCGdex.Query;
+                    log('sdk-result', '✅ Query encontrado en TCGdex.Query', 'success');
+                } else if (window.Query) {
+                    Query = window.Query;
+                    log('sdk-result', '✅ Query encontrado en window.Query', 'success');
+                } else {
+                    log('sdk-result', '❌ Query no está disponible', 'error');
+                    log('sdk-result', '💡 Query puede requerir importación separada', 'info');
+                    return;
+                }
+                
+                const tcgdex = new TCGdex('es');
+                
+                // Probar paginación
+                log('sdk-result', '🔍 Probando paginación (página 1, 3 cartas)...', 'info');
+                const paginatedCards = await tcgdex.card.list(
+                    Query.create().paginate(1, 3)
+                );
+                
+                if (Array.isArray(paginatedCards) && paginatedCards.length > 0) {
+                    log('sdk-result', `✅ Paginación funciona: ${paginatedCards.length} cartas`, 'success');
+                    showResults(paginatedCards, 'Cartas paginadas');
+                } else {
+                    log('sdk-result', '⚠️ Paginación no devolvió resultados esperados', 'warning');
+                    showResults(paginatedCards, 'Resultado de paginación');
+                }
+                
+            } catch (error) {
+                log('sdk-result', `❌ Error: ${error.message}`, 'error');
+                log('sdk-result', `📋 Stack: ${error.stack}`, 'error');
+            }
+        }
+        
+        async function testPikachu() {
+            clear('sdk-result');
+            log('sdk-result', '🔍 Buscando cartas de Pikachu...', 'info');
+            
+            try {
+                if (typeof TCGdex === 'undefined') {
+                    log('sdk-result', '❌ TCGdex no está disponible', 'error');
+                    return;
+                }
+                
+                const tcgdex = new TCGdex('es');
+                
+                // Intentar con Query si está disponible
+                let Query = TCGdex.Query || window.Query;
+                
+                if (Query) {
+                    log('sdk-result', '✅ Usando Query para buscar Pikachu', 'success');
+                    const pikachuCards = await tcgdex.card.list(
+                        Query.create()
+                            .equal('name', 'Pikachu')
+                    );
+                    
+                    if (Array.isArray(pikachuCards) && pikachuCards.length > 0) {
+                        log('sdk-result', `✅ Encontradas ${pikachuCards.length} cartas de Pikachu`, 'success');
+                        showResults(pikachuCards.slice(0, 10), `Cartas de Pikachu (mostrando 10 de ${pikachuCards.length})`);
+                    } else {
+                        log('sdk-result', '⚠️ No se encontraron cartas de Pikachu con Query', 'warning');
+                    }
+                } else {
+                    log('sdk-result', '⚠️ Query no disponible, obteniendo todas las cartas y filtrando...', 'warning');
+                    const allCards = await tcgdex.card.list();
+                    const pikachuCards = allCards.filter(card => 
+                        card.name && card.name.toLowerCase().includes('pikachu')
+                    );
+                    
+                    if (pikachuCards.length > 0) {
+                        log('sdk-result', `✅ Encontradas ${pikachuCards.length} cartas de Pikachu (filtrado manual)`, 'success');
+                        showResults(pikachuCards.slice(0, 10), `Cartas de Pikachu (mostrando 10 de ${pikachuCards.length})`);
+                    } else {
+                        log('sdk-result', '❌ No se encontraron cartas de Pikachu', 'error');
+                    }
+                }
+                
+            } catch (error) {
+                log('sdk-result', `❌ Error: ${error.message}`, 'error');
+                log('sdk-result', `📋 Stack: ${error.stack}`, 'error');
+            }
+        }
+        
+        // Verificar cuando se carga la página
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                clear('sdk-result');
+                log('sdk-result', '📋 Verificando disponibilidad del SDK...', 'info');
+                
+                if (typeof TCGdex !== 'undefined') {
+                    log('sdk-result', '✅ TCGdex está disponible', 'success');
+                    log('sdk-result', `📋 Query disponible: ${!!(TCGdex.Query || window.Query)}`, 'info');
+                } else {
+                    log('sdk-result', '❌ TCGdex no está disponible', 'error');
+                    log('sdk-result', '💡 Asegúrate de que el script del CDN se haya cargado', 'info');
+                }
+            }, 500);
+        });
     </script>
     
 </body>
 </html>
-
