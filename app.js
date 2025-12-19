@@ -268,26 +268,27 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
     }
     
     try {
-        // Detectar si estamos en GitHub Pages y usar proxy de Vercel si está disponible
-        const isGitHubPages = window.location.hostname.includes('github.io');
+        // Detectar si estamos en localhost o en producción (GitHub Pages/Vercel)
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1';
         let url;
         
-        if (isGitHubPages) {
-            // Usar proxy de Vercel desde GitHub Pages
-            const vercelProxy = 'https://poke-capture.vercel.app/api/proxy.js';
-            url = `${vercelProxy}?q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
-        } else {
+        if (isLocalhost) {
             // Usar la API directamente desde localhost (con extensión CORS)
             const queryParams = `q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
             url = `${baseUrl}?${queryParams}`;
+        } else {
+            // Usar proxy de Vercel desde GitHub Pages o Vercel
+            const vercelProxy = 'https://poke-capture.vercel.app/api/proxy.js';
+            url = `${vercelProxy}?q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
         }
         
         const headers = {
             'Accept': 'application/json'
         };
         
-        // Solo agregar API key si no estamos usando el proxy (el proxy la maneja internamente)
-        if (!isGitHubPages) {
+        // Solo agregar API key si estamos en localhost (el proxy la maneja internamente)
+        if (isLocalhost) {
             headers['X-Api-Key'] = apiKey;
         }
         
