@@ -16,56 +16,50 @@ const state = {
     tcgdx: null // Instancia del SDK de TCGdx
 };
 
-// Inicializar TCGdx SDK
+// Inicializar TCGdx usando API REST directamente (más confiable que el SDK)
 function initTCGdx() {
-    // El SDK puede estar expuesto como TCGdx o TCGdex (verificar ambos)
-    let SDK = null;
-    
-    if (typeof TCGdx !== 'undefined') {
-        SDK = TCGdx;
-    } else if (typeof TCGdex !== 'undefined') {
-        SDK = TCGdex;
-    } else if (window.TCGdx) {
-        SDK = window.TCGdx;
-    } else if (window.TCGdex) {
-        SDK = window.TCGdex;
-    }
-    
-    if (SDK) {
-        try {
-            // Usar español como idioma por defecto
-            state.tcgdx = new SDK('es');
-            console.log('✅ TCGdx SDK inicializado');
-        } catch (error) {
-            console.error('❌ Error inicializando TCGdx SDK:', error);
-        }
-    } else {
-        // Intentar de nuevo después de un breve delay si el script aún se está cargando
-        setTimeout(() => {
-            let SDKRetry = null;
-            if (typeof TCGdx !== 'undefined') {
-                SDKRetry = TCGdx;
-            } else if (typeof TCGdex !== 'undefined') {
-                SDKRetry = TCGdex;
-            } else if (window.TCGdx) {
-                SDKRetry = window.TCGdx;
-            } else if (window.TCGdex) {
-                SDKRetry = window.TCGdex;
-            }
-            
-            if (SDKRetry) {
-                try {
-                    state.tcgdx = new SDKRetry('es');
-                    console.log('✅ TCGdx SDK inicializado (retry)');
-                } catch (error) {
-                    console.error('❌ Error inicializando TCGdx SDK:', error);
+    // Usar la API REST de TCGdx directamente en lugar del SDK
+    // La API es: https://api.tcgdx.dev/v2/{lang}/cards
+    state.tcgdx = {
+        lang: 'es', // Idioma español
+        baseUrl: 'https://api.tcgdx.dev/v2',
+        // Función para buscar cartas por nombre
+        searchCards: async function(name, page = 1, pageSize = 10) {
+            try {
+                // La API de TCGdx permite buscar por nombre
+                const url = `${this.baseUrl}/${this.lang}/cards?name=${encodeURIComponent(name)}&page=${page}&pageSize=${pageSize}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
-            } else {
-                console.error('❌ TCGdx SDK no está disponible. Verifica que el script se haya cargado correctamente.');
-                console.log('Variables disponibles en window:', Object.keys(window).filter(k => k.includes('TCG')));
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error buscando cartas en TCGdx:', error);
+                throw error;
             }
-        }, 1000);
-    }
+        },
+        // Función para obtener todas las cartas y filtrar (fallback)
+        getAllCards: async function() {
+            try {
+                const url = `${this.baseUrl}/${this.lang}/cards`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return Array.isArray(data) ? data : (data.data || []);
+            } catch (error) {
+                console.error('Error obteniendo todas las cartas:', error);
+                throw error;
+            }
+        }
+    };
+    console.log('✅ TCGdx API inicializada (usando REST API directamente)');
 }
 
 // Función de inicialización
@@ -538,50 +532,48 @@ async function loadCardsPage(pokemon, page, isFirstLoad = false, retryCount = 0)
     
     try {
         if (!state.tcgdx) {
-            throw new Error('TCGdx SDK no está disponible');
+            throw new Error('TCGdx API no está disponible');
         }
         
-        // Usar Query del SDK de TCGdx para buscar cartas
-        // Buscar por nombre exacto del Pokémon
+        // Buscar cartas por nombre del Pokémon usando la API REST de TCGdx
         const pokemonName = state.cardsPagination.pokemonName || pokemon.name;
-        
-        // Obtener Query del SDK (puede estar en TCGdx.Query o importado)
-        let Query;
-        if (typeof TCGdx !== 'undefined' && TCGdx.Query) {
-            Query = TCGdx.Query;
-        } else if (window.TCGdx && window.TCGdx.Query) {
-            Query = window.TCGdx.Query;
-        }
         
         let fetchedCards = [];
         
-        if (Query) {
-            // Usar Query del SDK para buscar y paginar
-            try {
-                fetchedCards = await state.tcgdx.card.list(
-                    Query.create()
-                        .equal('name', pokemonName)
-                        .paginate(page, state.cardsPagination.pageSize)
-                );
-            } catch (queryError) {
-                console.warn('Error con Query, intentando método alternativo:', queryError);
-                // Fallback: obtener todas las cartas y filtrar manualmente
-                const allCards = await state.tcgdx.card.list();
+        try {
+            // Intentar buscar directamente usando la API REST
+            const searchResult = await state.tcgdx.searchCards(pokemonName, page, state.cardsPagination.pageSize);
+            
+            // La API puede devolver un array o un objeto con data
+            if (Array.isArray(searchResult)) {
+                fetchedCards = searchResult;
+            } else if (searchResult.data && Array.isArray(searchResult.data)) {
+                fetchedCards = searchResult.data;
+            } else if (searchResult.cards && Array.isArray(searchResult.cards)) {
+                fetchedCards = searchResult.cards;
+            } else {
+                // Si no hay resultados en el formato esperado, obtener todas y filtrar
+                const allCards = await state.tcgdx.getAllCards();
                 const filtered = allCards.filter(card => 
                     card.name && card.name.toLowerCase() === pokemonName.toLowerCase()
                 );
                 const startIndex = (page - 1) * state.cardsPagination.pageSize;
                 fetchedCards = filtered.slice(startIndex, startIndex + state.cardsPagination.pageSize);
             }
-        } else {
-            // Método alternativo: obtener todas las cartas y filtrar manualmente
-            console.log('Query no disponible, usando método alternativo');
-            const allCards = await state.tcgdx.card.list();
-            const filtered = allCards.filter(card => 
-                card.name && card.name.toLowerCase() === pokemonName.toLowerCase()
-            );
-            const startIndex = (page - 1) * state.cardsPagination.pageSize;
-            fetchedCards = filtered.slice(startIndex, startIndex + state.cardsPagination.pageSize);
+        } catch (searchError) {
+            console.warn('Error en búsqueda directa, usando método alternativo:', searchError);
+            // Fallback: obtener todas las cartas y filtrar manualmente
+            try {
+                const allCards = await state.tcgdx.getAllCards();
+                const filtered = allCards.filter(card => 
+                    card.name && card.name.toLowerCase() === pokemonName.toLowerCase()
+                );
+                const startIndex = (page - 1) * state.cardsPagination.pageSize;
+                fetchedCards = filtered.slice(startIndex, startIndex + state.cardsPagination.pageSize);
+            } catch (fallbackError) {
+                console.error('Error en método alternativo:', fallbackError);
+                throw fallbackError;
+            }
         }
         
         // Actualizar información de paginación
@@ -727,28 +719,21 @@ function renderCards(cards, pokemon) {
             cardElement.classList.add('selected');
         }
         
-        // Obtener URL de imagen usando TCGdx SDK
+        // Obtener URL de imagen de TCGdx
+        // TCGdx usa localId para las imágenes (formato: set-localId, ej: "swsh3-136")
         let imageUrl = 'https://via.placeholder.com/200?text=Carta';
         
-        if (card.getImageURL && typeof card.getImageURL === 'function') {
-            // Usar el método del SDK para obtener imagen de alta calidad
-            try {
-                imageUrl = card.getImageURL('high', 'png') || card.getImageURL('low', 'webp');
-            } catch (e) {
-                console.warn('Error obteniendo imagen con getImageURL:', e);
-            }
-        }
-        
-        // Fallbacks si getImageURL no funciona
-        if (imageUrl === 'https://via.placeholder.com/200?text=Carta') {
-            if (card.image) {
-                imageUrl = card.image;
-            } else if (card.images) {
-                imageUrl = card.images.large || card.images.small || card.images.normal;
-            } else if (card.localId) {
-                // Construir URL de imagen de TCGdx
-                imageUrl = `https://assets.tcgdx.dev/images/cards/${card.localId}.png`;
-            }
+        if (card.localId) {
+            // Construir URL de imagen de TCGdx usando localId
+            // Formato: https://assets.tcgdx.dev/images/cards/{localId}.png
+            imageUrl = `https://assets.tcgdx.dev/images/cards/${card.localId}.png`;
+        } else if (card.image) {
+            imageUrl = card.image;
+        } else if (card.images) {
+            imageUrl = card.images.large || card.images.small || card.images.normal;
+        } else if (card.id) {
+            // Intentar usar el ID como localId
+            imageUrl = `https://assets.tcgdx.dev/images/cards/${card.id}.png`;
         }
         
         const cardName = card.name || 'Carta sin nombre';
