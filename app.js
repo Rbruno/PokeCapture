@@ -232,31 +232,26 @@ async function openCardsModal(pokemon) {
         baseUrl: ''
     };
     
-    // Usar API oficial de Pokémon TCG con proxy CORS
-    // TCGdx no está disponible, así que usamos la API oficial con proxy
+    // Usar la API oficial de Pokémon TCG
     const API_KEY = '3ca5dcd8-ef83-472a-92a8-e9d0155cdeb2';
     const pokemonNameForSearch = pokemon.name.toLowerCase();
     const baseUrl = 'https://api.pokemontcg.io/v2/cards';
     const query = encodeURIComponent(`name:${pokemonNameForSearch}`);
     
-    // Usar proxy CORS que funcione desde GitHub Pages
-    const corsProxy = 'https://api.allorigins.win/raw?url=';
-    
     // Guardar información de paginación
     state.cardsPagination.query = query;
     state.cardsPagination.baseUrl = baseUrl;
-    state.cardsPagination.corsProxy = corsProxy;
     state.cardsPagination.apiKey = API_KEY;
     
     // Cargar primera página
-    await loadCardsPage(pokemon, 1, query, baseUrl, corsProxy, API_KEY, true);
+    await loadCardsPage(pokemon, 1, query, baseUrl, API_KEY, true);
     
     // Configurar scroll infinito
-    setupInfiniteScroll(pokemon, query, baseUrl, corsProxy, API_KEY);
+    setupInfiniteScroll(pokemon, query, baseUrl, API_KEY);
 }
 
-// Cargar una página de cartas con reintentos (usando API oficial con proxy CORS)
-async function loadCardsPage(pokemon, page, query, baseUrl, corsProxy, apiKey, isFirstLoad = false, retryCount = 0) {
+// Cargar una página de cartas con reintentos
+async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad = false, retryCount = 0) {
     if (state.cardsPagination.loading || !state.cardsPagination.hasMore) {
         return;
     }
@@ -273,40 +268,37 @@ async function loadCardsPage(pokemon, page, query, baseUrl, corsProxy, apiKey, i
     }
     
     try {
-        // Usar API oficial de Pokémon TCG con proxy CORS
+        // Usar la API oficial de Pokémon TCG directamente
         const queryParams = `q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
-        const targetUrl = `${baseUrl}?${queryParams}`;
-        const proxyUrl = `${corsProxy}${encodeURIComponent(targetUrl)}`;
+        const url = `${baseUrl}?${queryParams}`;
         
-        console.log(`Buscando cartas usando proxy CORS...`);
-        
-        const response = await fetch(proxyUrl, {
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'X-Api-Key': apiKey
             },
             mode: 'cors'
         });
+        
+        // Si es 504 y es el primer intento, reintentar
+        if (response.status === 504 && retryCount < 2) {
+            console.log(`Error 504, reintentando... (intento ${retryCount + 1}/2)`);
+            state.cardsPagination.loading = false;
+            modalLoading.style.display = 'none';
+            loadingMore.style.display = 'none';
+            
+            // Esperar un poco antes de reintentar
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            return loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad, retryCount + 1);
+        }
         
         if (!response.ok) {
             throw new Error(`Error HTTP ${response.status}`);
         }
         
-        let responseText = await response.text();
-        let data;
-        
-        // El proxy allorigins.win devuelve el contenido en un objeto con el campo "contents"
-        try {
-            const proxyResponse = JSON.parse(responseText);
-            if (proxyResponse.contents) {
-                data = JSON.parse(proxyResponse.contents);
-            } else {
-                data = proxyResponse;
-            }
-        } catch (e) {
-            data = JSON.parse(responseText);
-        }
-        
+        const data = await response.json();
         let fetchedCards = [];
         
         if (data.data && Array.isArray(data.data)) {
@@ -485,7 +477,7 @@ function renderCards(cards, pokemon) {
 }
 
 // Configurar scroll infinito
-function setupInfiniteScroll(pokemon, query, baseUrl, corsProxy, apiKey) {
+function setupInfiniteScroll(pokemon, query, baseUrl, apiKey) {
     const modalContent = document.querySelector('.modal-content');
     let scrollTimeout;
     
@@ -501,7 +493,7 @@ function setupInfiniteScroll(pokemon, query, baseUrl, corsProxy, apiKey) {
             if (scrollTop + clientHeight >= scrollHeight - 100) {
                 if (state.cardsPagination.hasMore && !state.cardsPagination.loading) {
                     const nextPage = state.cardsPagination.currentPage + 1;
-                    loadCardsPage(pokemon, nextPage, query, baseUrl, corsProxy, apiKey, false);
+                    loadCardsPage(pokemon, nextPage, query, baseUrl, apiKey, false);
                 }
             }
         }, 100);
