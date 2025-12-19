@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PokeCapture - Colección de Cartas Pokémon</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔴 PokeCapture</h1>
+            <p>Gestiona tu colección de cartas Pokémon</p>
+            <div class="stats">
+                <span id="total-pokemon">Total: 0</span>
+                <span id="captured-pokemon">Capturados: 0</span>
+                <span id="percentage">0%</span>
+            </div>
+        </header>
+
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Buscar Pokémon...">
+            <button id="filter-captured">Mostrar solo capturados</button>
+            <button id="filter-all">Mostrar todos</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Cargando Pokémon...</p>
+        </div>
+
+        <div class="pokemon-grid" id="pokemon-grid">
+            <!-- Los Pokémon se cargarán aquí dinámicamente -->
+        </div>
+
+        <!-- Modal para mostrar las cartas de un Pokémon -->
+        <div class="modal" id="cards-modal">
+            <div class="modal-content">
+                <span class="close" id="close-modal">&times;</span>
+                <h2 id="modal-title">Cartas de Pokémon</h2>
+                <div class="loading" id="modal-loading">
+                    <div class="spinner"></div>
+                    <p>Cargando cartas...</p>
+                </div>
+                <div class="cards-grid" id="cards-grid">
+                    <!-- Las cartas se cargarán aquí dinámicamente -->
+                </div>
+                <div class="loading-more" id="loading-more" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Cargando más cartas...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
