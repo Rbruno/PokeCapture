@@ -56,30 +56,13 @@
     <h1>🧪 Test API TCGdx</h1>
     <script src="https://cdn.jsdelivr.net/npm/@tcgdex/sdk@2/dist/tcgdex.browser.js"></script>
     <script>
-      // Instantiate the SDK
-      const tcgdex = new TCGdex('en');
-    
-      // Use in an async context
-      (async () => {
-        // Retrieve Furret from the Darkness Ablaze Set
-        const card = await tcgdex.card.get('swsh3-136');
-        console.log(card.name); // "Furret"
-      })();
-      // Get a specific card
-const card = await tcgdex.card.get('swsh3-136');
 
-// Get a specific set
-const set = await tcgdex.set.get('swsh3');
 
-// Get a specific serie
-const serie = await tcgdex.serie.get('swsh');
-
-// Get a list of all cards
-const allCards = await tcgdex.card.list();
 import TCGdex, { Query } from '@tcgdex/sdk';
 
 const tcgdex = new TCGdex('en');
-
+// Get a list of all cards
+const allCards = await tcgdex.card.list();
 // Create a query to find Pikachu cards with HP between 60 and 70
 const pikachuCards = await tcgdex.card.list(
   Query.create()
