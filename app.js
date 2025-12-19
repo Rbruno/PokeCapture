@@ -260,11 +260,15 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
     const loadingMore = document.getElementById('loading-more');
     const modalLoading = document.getElementById('modal-loading');
     const cardsGrid = document.getElementById('cards-grid');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    const loadMoreContainer = document.getElementById('load-more-container');
     
     if (isFirstLoad) {
         modalLoading.style.display = 'block';
+        loadMoreContainer.style.display = 'none';
     } else {
         loadingMore.style.display = 'block';
+        loadMoreBtn.disabled = true;
     }
     
     try {
@@ -293,11 +297,27 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
             headers['X-Api-Key'] = apiKey;
         }
         
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: headers,
-            mode: 'cors'
-        });
+        // Configurar timeout de 3 minutos (180000 ms)
+        const TIMEOUT_MS = 180000; // 3 minutos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        
+        let response;
+        try {
+            response = await fetch(url, {
+                method: 'GET',
+                headers: headers,
+                mode: 'cors',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('La solicitud tardó más de 3 minutos en completarse');
+            }
+            throw error;
+        }
         
         // Si es 504 y es el primer intento, reintentar
         if (response.status === 504 && retryCount < 2) {
@@ -353,6 +373,16 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
         loadingMore.style.display = 'none';
         state.cardsPagination.currentPage = page;
         state.cardsPagination.loading = false;
+        
+        // Mostrar/ocultar botón "Ver más"
+        const loadMoreBtn = document.getElementById('load-more-btn');
+        const loadMoreContainer = document.getElementById('load-more-container');
+        if (state.cardsPagination.hasMore) {
+            loadMoreContainer.style.display = 'block';
+            loadMoreBtn.disabled = false;
+        } else {
+            loadMoreContainer.style.display = 'none';
+        }
         
     } catch (error) {
         console.error('Error cargando cartas:', error);
@@ -487,36 +517,34 @@ function renderCards(cards, pokemon) {
     });
 }
 
-// Configurar scroll infinito
+// Configurar botón "Ver más" en lugar de scroll infinito
 function setupInfiniteScroll(pokemon, query, baseUrl, apiKey) {
-    const modalContent = document.querySelector('.modal-content');
-    let scrollTimeout;
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    const loadMoreContainer = document.getElementById('load-more-container');
     
-    // Guardar referencia para poder removerla después
-    const handleScroll = () => {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            const scrollTop = modalContent.scrollTop;
-            const scrollHeight = modalContent.scrollHeight;
-            const clientHeight = modalContent.clientHeight;
-            
-            // Cargar más cuando estemos cerca del final (100px antes)
-            if (scrollTop + clientHeight >= scrollHeight - 100) {
-                if (state.cardsPagination.hasMore && !state.cardsPagination.loading) {
-                    const nextPage = state.cardsPagination.currentPage + 1;
-                    loadCardsPage(pokemon, nextPage, query, baseUrl, apiKey, false);
-                }
-            }
-        }, 100);
+    // Remover listener anterior si existe
+    if (state.cardsPagination.loadMoreHandler) {
+        loadMoreBtn.removeEventListener('click', state.cardsPagination.loadMoreHandler);
+    }
+    
+    // Crear nuevo handler
+    const handleLoadMore = () => {
+        if (state.cardsPagination.hasMore && !state.cardsPagination.loading) {
+            const nextPage = state.cardsPagination.currentPage + 1;
+            loadCardsPage(pokemon, nextPage, query, baseUrl, apiKey, false);
+        }
     };
     
-    // Remover listener anterior si existe (usando una función anónima que podemos referenciar)
-    modalContent.removeEventListener('scroll', state.cardsPagination.scrollHandler);
-    
     // Guardar referencia para poder removerla después
-    state.cardsPagination.scrollHandler = handleScroll;
+    state.cardsPagination.loadMoreHandler = handleLoadMore;
     
-    modalContent.addEventListener('scroll', handleScroll);
+    // Agregar listener al botón
+    loadMoreBtn.addEventListener('click', handleLoadMore);
+    
+    // Mostrar botón si hay más cartas
+    if (state.cardsPagination.hasMore) {
+        loadMoreContainer.style.display = 'block';
+    }
 }
 
 // Función auxiliar para capitalizar primera letra
@@ -554,11 +582,11 @@ function selectCard(pokemon, card) {
 // Cerrar modal
 function closeModal() {
     const modal = document.getElementById('cards-modal');
-    const modalContent = document.querySelector('.modal-content');
+    const loadMoreBtn = document.getElementById('load-more-btn');
     
-    // Limpiar listener de scroll si existe
-    if (state.cardsPagination.scrollHandler) {
-        modalContent.removeEventListener('scroll', state.cardsPagination.scrollHandler);
+    // Limpiar listener del botón si existe
+    if (state.cardsPagination.loadMoreHandler) {
+        loadMoreBtn.removeEventListener('click', state.cardsPagination.loadMoreHandler);
     }
     
     modal.style.display = 'none';
@@ -571,7 +599,7 @@ function closeModal() {
         loading: false,
         query: '',
         baseUrl: '',
-        scrollHandler: null
+        loadMoreHandler: null
     };
 }
 
