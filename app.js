@@ -18,28 +18,63 @@ const state = {
 
 // Inicializar TCGdx usando API REST directamente (más confiable que el SDK)
 function initTCGdx() {
-    // Usar la API REST de TCGdx directamente en lugar del SDK
+    // Usar la API REST de TCGdx directamente
     // La API es: https://api.tcgdx.dev/v2/{lang}/cards
+    // Según la documentación: https://tcgdx.dev/
     state.tcgdx = {
         lang: 'es', // Idioma español
         baseUrl: 'https://api.tcgdx.dev/v2',
         // Función para buscar cartas por nombre
         searchCards: async function(name, page = 1, pageSize = 10) {
-            try {
-                // La API de TCGdx permite buscar por nombre
-                const url = `${this.baseUrl}/${this.lang}/cards?name=${encodeURIComponent(name)}&page=${page}&pageSize=${pageSize}`;
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+            // Intentar con diferentes URLs base si la primera falla
+            const urlsToTry = [
+                `${this.baseUrl}/${this.lang}/cards`,
+                `https://api.tcgdx.dev/v2/${this.lang}/cards`,
+                `https://tcgdx.dev/api/v2/${this.lang}/cards`
+            ];
+            
+            let lastError = null;
+            
+            for (const url of urlsToTry) {
+                try {
+                    console.log('Intentando con URL:', url);
+                    const response = await fetch(url);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    // La API devuelve un array de cartas
+                    const allCards = Array.isArray(data) ? data : (data.data || []);
+                    
+                    // Filtrar por nombre (case-insensitive, busca coincidencias parciales)
+                    const filtered = allCards.filter(card => 
+                        card.name && card.name.toLowerCase().includes(name.toLowerCase())
+                    );
+                    
+                    // Aplicar paginación
+                    const startIndex = (page - 1) * pageSize;
+                    const paginated = filtered.slice(startIndex, startIndex + pageSize);
+                    
+                    return {
+                        data: paginated,
+                        page: page,
+                        pageSize: pageSize,
+                        totalCount: filtered.length,
+                        hasMore: (startIndex + pageSize) < filtered.length
+                    };
+                } catch (error) {
+                    console.warn(`Error con URL ${url}:`, error.message);
+                    lastError = error;
+                    // Continuar con la siguiente URL
+                    continue;
                 }
-                
-                const data = await response.json();
-                return data;
-            } catch (error) {
-                console.error('Error buscando cartas en TCGdx:', error);
-                throw error;
             }
+            
+            // Si todas las URLs fallaron, lanzar el último error
+            console.error('Todas las URLs de TCGdx fallaron');
+            throw lastError || new Error('No se pudo conectar con la API de TCGdx');
         },
         // Función para obtener todas las cartas y filtrar (fallback)
         getAllCards: async function() {
@@ -538,42 +573,22 @@ async function loadCardsPage(pokemon, page, isFirstLoad = false, retryCount = 0)
         // Buscar cartas por nombre del Pokémon usando la API REST de TCGdx
         const pokemonName = state.cardsPagination.pokemonName || pokemon.name;
         
+        // Usar la función searchCards que obtiene todas las cartas y filtra
+        const searchResult = await state.tcgdx.searchCards(pokemonName, page, state.cardsPagination.pageSize);
+        
         let fetchedCards = [];
         
-        try {
-            // Intentar buscar directamente usando la API REST
-            const searchResult = await state.tcgdx.searchCards(pokemonName, page, state.cardsPagination.pageSize);
-            
-            // La API puede devolver un array o un objeto con data
-            if (Array.isArray(searchResult)) {
-                fetchedCards = searchResult;
-            } else if (searchResult.data && Array.isArray(searchResult.data)) {
-                fetchedCards = searchResult.data;
-            } else if (searchResult.cards && Array.isArray(searchResult.cards)) {
-                fetchedCards = searchResult.cards;
-            } else {
-                // Si no hay resultados en el formato esperado, obtener todas y filtrar
-                const allCards = await state.tcgdx.getAllCards();
-                const filtered = allCards.filter(card => 
-                    card.name && card.name.toLowerCase() === pokemonName.toLowerCase()
-                );
-                const startIndex = (page - 1) * state.cardsPagination.pageSize;
-                fetchedCards = filtered.slice(startIndex, startIndex + state.cardsPagination.pageSize);
-            }
-        } catch (searchError) {
-            console.warn('Error en búsqueda directa, usando método alternativo:', searchError);
-            // Fallback: obtener todas las cartas y filtrar manualmente
-            try {
-                const allCards = await state.tcgdx.getAllCards();
-                const filtered = allCards.filter(card => 
-                    card.name && card.name.toLowerCase() === pokemonName.toLowerCase()
-                );
-                const startIndex = (page - 1) * state.cardsPagination.pageSize;
-                fetchedCards = filtered.slice(startIndex, startIndex + state.cardsPagination.pageSize);
-            } catch (fallbackError) {
-                console.error('Error en método alternativo:', fallbackError);
-                throw fallbackError;
-            }
+        // La función searchCards devuelve { data, page, pageSize, totalCount, hasMore }
+        if (searchResult.data && Array.isArray(searchResult.data)) {
+            fetchedCards = searchResult.data;
+            state.cardsPagination.totalCount = searchResult.totalCount || 0;
+            state.cardsPagination.hasMore = searchResult.hasMore || false;
+        } else if (Array.isArray(searchResult)) {
+            fetchedCards = searchResult;
+            state.cardsPagination.hasMore = fetchedCards.length === state.cardsPagination.pageSize;
+        } else {
+            fetchedCards = [];
+            state.cardsPagination.hasMore = false;
         }
         
         // Actualizar información de paginación
