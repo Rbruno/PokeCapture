@@ -162,61 +162,78 @@ function initializeSDK(SDK) {
 // Función para inicializar el fallback REST
 function initializeRESTFallback() {
     console.warn('⚠️ SDK no disponible, usando API REST como fallback');
+    
+    const isLocalhost = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+    const isProduction = window.location.hostname.includes('vercel.app') || 
+                        window.location.hostname.includes('github.io');
+    
     state.tcgdx = {
         lang: 'es',
-        // Probar diferentes URLs base - la API de TCGdx puede estar en diferentes dominios
+        proxyUrl: 'https://poke-capture.vercel.app/api/proxy',
         searchCards: async function(name, page = 1, pageSize = 10) {
-            // Intentar diferentes URLs según la documentación de TCGdx
-            const urlsToTry = [
-                `https://api.tcgdx.dev/v2/${this.lang}/cards`,
-                `https://tcgdx.dev/api/v2/${this.lang}/cards`,
-                `https://api.tcgdex.dev/v2/${this.lang}/cards`,
-                `https://tcgdex.dev/api/v2/${this.lang}/cards`
-            ];
+            let url;
             
-            let lastError = null;
-            
-            for (const url of urlsToTry) {
-                try {
-                    console.log('Intentando con URL:', url);
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        mode: 'cors',
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    const allCards = Array.isArray(data) ? data : (data.data || []);
-                    const filtered = allCards.filter(card => 
-                        card.name && card.name.toLowerCase().includes(name.toLowerCase())
-                    );
-                    
-                    const startIndex = (page - 1) * pageSize;
-                    const paginated = filtered.slice(startIndex, startIndex + pageSize);
-                    
-                    console.log(`✅ Conectado a TCGdx usando: ${url}`);
-                    return {
-                        data: paginated,
-                        page: page,
-                        pageSize: pageSize,
-                        totalCount: filtered.length,
-                        hasMore: (startIndex + pageSize) < filtered.length
-                    };
-                } catch (error) {
-                    console.warn(`❌ Error con URL ${url}:`, error.message);
-                    lastError = error;
-                    continue;
-                }
+            // Si estamos en producción, usar el proxy de Vercel para evitar CORS
+            if (isProduction) {
+                // Usar el proxy de Vercel para TCGdx
+                url = `${this.proxyUrl}?api=tcgdx&lang=${this.lang}`;
+                console.log('🌐 Usando proxy de Vercel para TCGdx:', url);
+            } else {
+                // En localhost, intentar directamente (puede fallar por CORS)
+                url = `https://tcgdx.dev/v2/${this.lang}/cards`;
+                console.log('🌐 Intentando conexión directa a TCGdx:', url);
             }
             
-            console.error('❌ Todas las URLs de TCGdx fallaron');
-            throw lastError || new Error('No se pudo conectar con la API de TCGdx. Verifica tu conexión a internet.');
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const allCards = Array.isArray(data) ? data : (data.data || []);
+                
+                if (allCards.length === 0) {
+                    throw new Error('La API respondió pero no hay cartas');
+                }
+                
+                // Filtrar por nombre del Pokémon
+                const filtered = allCards.filter(card => 
+                    card.name && card.name.toLowerCase().includes(name.toLowerCase())
+                );
+                
+                // Aplicar paginación
+                const startIndex = (page - 1) * pageSize;
+                const paginated = filtered.slice(startIndex, startIndex + pageSize);
+                
+                console.log(`✅ Conectado exitosamente a TCGdx`);
+                console.log(`📊 Total de cartas encontradas: ${filtered.length} para "${name}"`);
+                
+                return {
+                    data: paginated,
+                    page: page,
+                    pageSize: pageSize,
+                    totalCount: filtered.length,
+                    hasMore: (startIndex + pageSize) < filtered.length
+                };
+            } catch (error) {
+                console.error(`❌ Error con TCGdx:`, error.message);
+                
+                // Si es error de CORS y estamos en localhost, sugerir usar el proxy
+                if (isLocalhost && (error.message.includes('CORS') || error.message.includes('blocked'))) {
+                    throw new Error('Error de CORS. En producción se usará el proxy automáticamente.');
+                }
+                
+                throw error;
+            }
         }
     };
     console.log('✅ TCGdx API REST inicializada (fallback)');
