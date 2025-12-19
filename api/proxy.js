@@ -27,30 +27,57 @@ module.exports = async (req, res) => {
         
         if (useTCGdx) {
             // Proxy para TCGdx
+            // Según la documentación: https://tcgdx.dev/
+            // La API REST está en: https://api.tcgdx.dev/v2/{lang}/cards
+            // Pero si ese dominio no funciona, probar: https://tcgdx.dev/v2/{lang}/cards
             const tcgdxLang = lang || 'es';
-            let apiUrl = `https://tcgdx.dev/v2/${tcgdxLang}/cards`;
             
-            // Si hay un nombre, obtener todas las cartas (la API se filtrará en el cliente)
-            // TCGdx no tiene parámetros de búsqueda en la URL según la documentación
-            const response = await fetch(apiUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
+            // Probar diferentes URLs base
+            const urlsToTry = [
+                `https://api.tcgdx.dev/v2/${tcgdxLang}/cards`,
+                `https://tcgdx.dev/v2/${tcgdxLang}/cards`,
+                `https://tcgdx.dev/api/v2/${tcgdxLang}/cards`
+            ];
+            
+            let lastError = null;
+            let success = false;
+            
+            for (const apiUrl of urlsToTry) {
+                try {
+                    console.log(`Intentando TCGdx URL: ${apiUrl}`);
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'PokeCapture/1.0'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`✅ TCGdx conectado exitosamente: ${apiUrl}`);
+                        res.status(200).json(data);
+                        success = true;
+                        break;
+                    } else {
+                        console.warn(`TCGdx URL ${apiUrl} retornó: ${response.status}`);
+                        lastError = new Error(`HTTP ${response.status}`);
+                    }
+                } catch (error) {
+                    console.warn(`Error con TCGdx URL ${apiUrl}:`, error.message);
+                    lastError = error;
+                    continue;
                 }
-            });
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('TCGdx API Error:', response.status, errorText);
-                res.status(response.status).json({ 
-                    error: `TCGdx API error: ${response.status}`,
-                    details: errorText
-                });
-                return;
             }
             
-            const data = await response.json();
-            res.status(200).json(data);
+            if (!success) {
+                console.error('Todas las URLs de TCGdx fallaron');
+                res.status(500).json({ 
+                    error: 'No se pudo conectar con la API de TCGdx',
+                    message: lastError ? lastError.message : 'Todas las URLs fallaron',
+                    triedUrls: urlsToTry
+                });
+            }
             
         } else {
             // Proxy para la API oficial de Pokémon TCG (código original)

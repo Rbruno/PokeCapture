@@ -54,240 +54,55 @@
 </head>
 <body>
     <h1>🧪 Test API TCGdx</h1>
-    <p>Esta página prueba diferentes formas de acceder a la API de TCGdx</p>
-
-    <div class="test-section">
-        <h2>1. Verificar SDK desde CDN</h2>
-        <button onclick="testSDK()">Probar SDK</button>
-        <div id="sdk-result"></div>
-    </div>
-
-    <div class="test-section">
-        <h2>2. Probar URLs de API REST</h2>
-        <button onclick="testAllURLs()">Probar Todas las URLs</button>
-        <div id="urls-result"></div>
-    </div>
-
-    <div class="test-section">
-        <h2>3. Probar con fetch directo</h2>
-        <button onclick="testDirectFetch()">Probar Fetch Directo</button>
-        <div id="fetch-result"></div>
-    </div>
-
-    <div class="test-section">
-        <h2>4. Verificar variables globales</h2>
-        <button onclick="checkGlobals()">Verificar Variables</button>
-        <div id="globals-result"></div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/@tcgdex/sdk@2/dist/tcgdex.browser.js"></script>
     <script>
-        const urlsToTest = [
-            'https://api.tcgdx.dev/v2/es/cards',
-            'https://tcgdx.dev/v2/es/cards',
-            'https://api.tcgdx.dev/v2/es/cards?limit=10',
-            'https://tcgdx.dev/api/v2/es/cards',
-            'https://api.tcgdex.dev/v2/es/cards',
-            'https://tcgdex.dev/v2/es/cards',
-            'https://tcgdx.dev/api/v2/cards?lang=es',
-            'https://api.tcgdx.dev/v2/cards?lang=es'
-        ];
+      // Instantiate the SDK
+      const tcgdex = new TCGdex('en');
+    
+      // Use in an async context
+      (async () => {
+        // Retrieve Furret from the Darkness Ablaze Set
+        const card = await tcgdex.card.get('swsh3-136');
+        console.log(card.name); // "Furret"
+      })();
+      // Get a specific card
+const card = await tcgdex.card.get('swsh3-136');
 
-        function log(elementId, message, type = 'info') {
-            const div = document.getElementById(elementId);
-            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
-            div.innerHTML += `<p class="${className}">${message}</p>`;
-        }
+// Get a specific set
+const set = await tcgdex.set.get('swsh3');
 
-        function clear(elementId) {
-            document.getElementById(elementId).innerHTML = '';
-        }
+// Get a specific serie
+const serie = await tcgdex.serie.get('swsh');
 
-        async function testSDK() {
-            clear('sdk-result');
-            log('sdk-result', '🔍 Verificando SDK...', 'info');
-            
-            const checks = [
-                { name: 'TCGdex', value: typeof TCGdex !== 'undefined' ? TCGdex : null },
-                { name: 'TCGdx', value: typeof TCGdx !== 'undefined' ? TCGdx : null },
-                { name: 'window.TCGdex', value: window.TCGdex || null },
-                { name: 'window.TCGdx', value: window.TCGdx || null }
-            ];
+// Get a list of all cards
+const allCards = await tcgdex.card.list();
+import TCGdex, { Query } from '@tcgdex/sdk';
 
-            let found = false;
-            for (const check of checks) {
-                if (check.value) {
-                    log('sdk-result', `✅ ${check.name} está disponible`, 'success');
-                    try {
-                        const sdk = new check.value('es');
-                        log('sdk-result', `✅ SDK inicializado correctamente`, 'success');
-                        
-                        // Verificar si Query está disponible
-                        let Query = null;
-                        if (check.value.Query) {
-                            Query = check.value.Query;
-                            log('sdk-result', `✅ Query está disponible`, 'success');
-                        } else if (sdk.Query) {
-                            Query = sdk.Query;
-                            log('sdk-result', `✅ Query está disponible en la instancia`, 'success');
-                        } else {
-                            log('sdk-result', `⚠️ Query no está disponible`, 'error');
-                        }
-                        
-                        try {
-                            // Verificar estructura del SDK
-                            log('sdk-result', `📋 Estructura del SDK:`, 'info');
-                            log('sdk-result', `- sdk.card: ${sdk.card ? 'existe' : 'no existe'}`, sdk.card ? 'success' : 'error');
-                            log('sdk-result', `- sdk.cards: ${sdk.cards ? 'existe' : 'no existe'}`, sdk.cards ? 'success' : 'error');
-                            log('sdk-result', `- Métodos del SDK: ${Object.keys(sdk).join(', ')}`, 'info');
-                            if (sdk.card) {
-                                log('sdk-result', `- Métodos de card: ${Object.keys(sdk.card).join(', ')}`, 'info');
-                            }
-                            
-                            // Probar diferentes formas de acceder a las cartas
-                            let allCards = null;
-                            if (sdk.card && sdk.card.list) {
-                                log('sdk-result', `🔍 Intentando con sdk.card.list()...`, 'info');
-                                allCards = await sdk.card.list();
-                            } else if (sdk.cards && sdk.cards.list) {
-                                log('sdk-result', `🔍 Intentando con sdk.cards.list()...`, 'info');
-                                allCards = await sdk.cards.list();
-                            } else if (sdk.list) {
-                                log('sdk-result', `🔍 Intentando con sdk.list()...`, 'info');
-                                allCards = await sdk.list();
-                            } else {
-                                throw new Error('No se encontró método para obtener cartas');
-                            }
-                            
-                            log('sdk-result', `✅ SDK funciona! Obtuvo ${allCards.length} cartas`, 'success');
-                            
-                            // Si Query está disponible, probar búsqueda
-                            if (Query) {
-                                try {
-                                    log('sdk-result', `🔍 Probando búsqueda con Query...`, 'info');
-                                    const query = Query.create().equal('name', 'Pikachu');
-                                    const pikachuCards = await sdk.card.list(query);
-                                    const count = Array.isArray(pikachuCards) ? pikachuCards.length : (pikachuCards.data ? pikachuCards.data.length : 'N/A');
-                                    log('sdk-result', `✅ Query funciona! Encontró ${count} cartas de Pikachu`, 'success');
-                                } catch (queryError) {
-                                    log('sdk-result', `❌ Error con Query: ${queryError.message}`, 'error');
-                                }
-                            }
-                            
-                            found = true;
-                        } catch (error) {
-                            log('sdk-result', `❌ Error al obtener cartas: ${error.message}`, 'error');
-                        }
-                    } catch (error) {
-                        log('sdk-result', `❌ Error al inicializar SDK: ${error.message}`, 'error');
-                    }
-                } else {
-                    log('sdk-result', `❌ ${check.name} no está disponible`, 'error');
-                }
-            }
+const tcgdex = new TCGdex('en');
 
-            if (!found) {
-                log('sdk-result', '⚠️ SDK no disponible en ninguna forma', 'error');
-            }
-        }
+// Create a query to find Pikachu cards with HP between 60 and 70
+const pikachuCards = await tcgdex.card.list(
+  Query.create()
+    .equal('name', 'Pikachu')  // Match exact name
+    .greaterOrEqualThan('hp', 60)  // HP >= 60
+    .lesserThan('hp', 70)  // HP < 70
+    .sort('localId', 'ASC')  // Sort by ID ascending
+);
 
-        async function testAllURLs() {
-            clear('urls-result');
-            log('urls-result', '🔍 Probando todas las URLs...', 'info');
+// Find cards containing "5" in their ID but not "tg"
+const filteredCards = await tcgdex.card.list(
+  Query.create()
+    .contains('localId', '5')  // ID contains "5"
+    .not.contains('localId', 'tg')  // ID doesn't contain "tg"
+);
 
-            for (const url of urlsToTest) {
-                try {
-                    log('urls-result', `🌐 Probando: ${url}`, 'info');
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        mode: 'cors',
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        const count = Array.isArray(data) ? data.length : (data.data ? data.data.length : 'N/A');
-                        log('urls-result', `✅ ${url} - OK! (${count} items)`, 'success');
-                        log('urls-result', `<pre>${JSON.stringify(data, null, 2).substring(0, 500)}...</pre>`, 'info');
-                    } else {
-                        log('urls-result', `❌ ${url} - HTTP ${response.status}`, 'error');
-                    }
-                } catch (error) {
-                    log('urls-result', `❌ ${url} - Error: ${error.message}`, 'error');
-                }
-            }
-        }
-
-        async function testDirectFetch() {
-            clear('fetch-result');
-            log('fetch-result', '🔍 Probando fetch directo...', 'info');
-
-            // Probar la URL más probable según la documentación
-            const testUrl = 'https://api.tcgdx.dev/v2/es/cards';
-            
-            try {
-                log('fetch-result', `Intentando: ${testUrl}`, 'info');
-                const response = await fetch(testUrl);
-                log('fetch-result', `Status: ${response.status} ${response.statusText}`, 'info');
-                log('fetch-result', `Headers: ${JSON.stringify([...response.headers.entries()])}`, 'info');
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    log('fetch-result', `✅ Éxito! Datos recibidos:`, 'success');
-                    log('fetch-result', `<pre>${JSON.stringify(data, null, 2).substring(0, 1000)}</pre>`, 'info');
-                } else {
-                    const text = await response.text();
-                    log('fetch-result', `❌ Error: ${text}`, 'error');
-                }
-            } catch (error) {
-                log('fetch-result', `❌ Error de red: ${error.message}`, 'error');
-                log('fetch-result', `Tipo de error: ${error.name}`, 'error');
-                if (error.message.includes('CORS')) {
-                    log('fetch-result', '⚠️ Problema de CORS detectado', 'error');
-                }
-                if (error.message.includes('Failed to fetch') || error.message.includes('ERR_NAME_NOT_RESOLVED')) {
-                    log('fetch-result', '⚠️ El dominio no se puede resolver. Puede que no exista o esté caído.', 'error');
-                }
-            }
-        }
-
-        function checkGlobals() {
-            clear('globals-result');
-            log('globals-result', '🔍 Verificando variables globales...', 'info');
-            
-            const allGlobals = Object.keys(window);
-            const tcgRelated = allGlobals.filter(k => 
-                k.toLowerCase().includes('tcg') || 
-                k.toLowerCase().includes('dex') ||
-                k.toLowerCase().includes('pokemon')
-            );
-
-            log('globals-result', `Variables relacionadas con TCG: ${tcgRelated.length}`, 'info');
-            if (tcgRelated.length > 0) {
-                tcgRelated.forEach(v => {
-                    log('globals-result', `- ${v}: ${typeof window[v]}`, 'info');
-                });
-            } else {
-                log('globals-result', '⚠️ No se encontraron variables relacionadas', 'error');
-            }
-
-            // Verificar específicamente
-            log('globals-result', '<br><strong>Verificaciones específicas:</strong>', 'info');
-            log('globals-result', `typeof TCGdex: ${typeof TCGdex}`, typeof TCGdex !== 'undefined' ? 'success' : 'error');
-            log('globals-result', `typeof TCGdx: ${typeof TCGdx}`, typeof TCGdx !== 'undefined' ? 'success' : 'error');
-            log('globals-result', `window.TCGdex: ${window.TCGdex ? 'existe' : 'no existe'}`, window.TCGdex ? 'success' : 'error');
-            log('globals-result', `window.TCGdx: ${window.TCGdx ? 'existe' : 'no existe'}`, window.TCGdx ? 'success' : 'error');
-        }
-
-        // Auto-ejecutar algunas pruebas al cargar
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                checkGlobals();
-            }, 1000);
-        });
+// Pagination example - get page 3 with 2 items per page
+const paginatedCards = await tcgdex.card.list(
+  Query.create()
+    .paginate(3, 2)
+);
     </script>
+    
 </body>
 </html>
 

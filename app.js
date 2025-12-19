@@ -48,59 +48,12 @@ function initializeSDK(SDK) {
         // Inicializar el SDK con español
         const tcgdex = new SDK('es');
         
-        // Verificar la estructura del SDK
-        console.log('📋 Estructura del SDK:', {
-            hasCard: !!tcgdex.card,
-            hasCards: !!tcgdex.cards,
-            methods: Object.keys(tcgdex),
-            cardMethods: tcgdex.card ? Object.keys(tcgdex.card) : 'card no existe',
-            cardsMethods: tcgdex.cards ? Object.keys(tcgdex.cards) : 'cards no existe'
-        });
-        
-        // Obtener Query del SDK si está disponible
-        // Según la documentación, Query se importa por separado: import TCGdex, { Query } from '@tcgdx/sdk'
-        // Pero en el navegador puede estar en diferentes lugares
-        let Query = null;
-        if (SDK.Query) {
-            Query = SDK.Query;
-            console.log('✅ Query encontrado en SDK');
-        } else if (window.Query) {
-            Query = window.Query;
-            console.log('✅ Query encontrado en window');
-        } else if (tcgdex.Query) {
-            Query = tcgdex.Query;
-            console.log('✅ Query encontrado en instancia');
-        } else {
-            console.warn('⚠️ Query no está disponible (puede requerir importación separada)');
-        }
-        
-        // Verificar cómo acceder a las cartas - probar diferentes formas
-        let cardAccessor = null;
-        if (tcgdex.card && typeof tcgdex.card.list === 'function') {
-            cardAccessor = tcgdex.card;
-            console.log('✅ Usando tcgdex.card.list()');
-        } else if (tcgdex.cards && typeof tcgdex.cards.list === 'function') {
-            cardAccessor = tcgdex.cards;
-            console.log('✅ Usando tcgdex.cards.list()');
-        } else if (typeof tcgdex.list === 'function') {
-            cardAccessor = { list: () => tcgdex.list() };
-            console.log('✅ Usando tcgdex.list()');
-        } else {
-            // Intentar acceder directamente
-            console.warn('⚠️ No se encontró método list() estándar, intentando acceso directo');
-            // Probar si card existe pero sin list
-            if (tcgdex.card) {
-                cardAccessor = tcgdex.card;
-            } else if (tcgdex.cards) {
-                cardAccessor = tcgdex.cards;
-            }
-        }
-        
-        if (!cardAccessor || typeof cardAccessor.list !== 'function') {
-            console.error('❌ No se puede acceder a las cartas del SDK');
-            console.error('Estructura completa:', JSON.stringify(Object.keys(tcgdex), null, 2));
-            throw new Error('No se puede acceder a card.list() del SDK');
-        }
+        // El SDK del CDN no funciona correctamente (solo tiene 'lang')
+        // Según la documentación, el SDK necesita módulos ES (import/export), no funciona bien desde CDN
+        // Vamos a usar la API REST directamente a través del proxy
+        console.warn('⚠️ SDK del CDN no funciona correctamente (solo tiene lang). Usando API REST.');
+        initializeRESTFallback();
+        return;
         
         // Crear wrapper con las funciones que necesitamos
         state.tcgdx = {
