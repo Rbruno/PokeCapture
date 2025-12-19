@@ -48,77 +48,103 @@ function initializeSDK(SDK) {
         // Inicializar el SDK con español
         const tcgdex = new SDK('es');
         
-            // Obtener Query del SDK si está disponible
-            let Query = null;
-            if (typeof Query !== 'undefined' && SDK.Query) {
-                Query = SDK.Query;
-            } else if (window.Query) {
-                Query = window.Query;
-            } else if (tcgdex.Query) {
-                Query = tcgdex.Query;
+        // Verificar la estructura del SDK
+        console.log('📋 Estructura del SDK:', {
+            hasCard: !!tcgdex.card,
+            hasCards: !!tcgdex.cards,
+            methods: Object.keys(tcgdex),
+            cardMethods: tcgdex.card ? Object.keys(tcgdex.card) : 'card no existe',
+            cardsMethods: tcgdex.cards ? Object.keys(tcgdex.cards) : 'cards no existe'
+        });
+        
+        // Obtener Query del SDK si está disponible
+        // Según la documentación, Query se importa por separado: import TCGdex, { Query } from '@tcgdx/sdk'
+        // Pero en el navegador puede estar en diferentes lugares
+        let Query = null;
+        if (SDK.Query) {
+            Query = SDK.Query;
+            console.log('✅ Query encontrado en SDK');
+        } else if (window.Query) {
+            Query = window.Query;
+            console.log('✅ Query encontrado en window');
+        } else if (tcgdex.Query) {
+            Query = tcgdex.Query;
+            console.log('✅ Query encontrado en instancia');
+        } else {
+            console.warn('⚠️ Query no está disponible (puede requerir importación separada)');
+        }
+        
+        // Verificar cómo acceder a las cartas - probar diferentes formas
+        let cardAccessor = null;
+        if (tcgdex.card && typeof tcgdex.card.list === 'function') {
+            cardAccessor = tcgdex.card;
+            console.log('✅ Usando tcgdex.card.list()');
+        } else if (tcgdex.cards && typeof tcgdex.cards.list === 'function') {
+            cardAccessor = tcgdex.cards;
+            console.log('✅ Usando tcgdex.cards.list()');
+        } else if (typeof tcgdex.list === 'function') {
+            cardAccessor = { list: () => tcgdex.list() };
+            console.log('✅ Usando tcgdex.list()');
+        } else {
+            // Intentar acceder directamente
+            console.warn('⚠️ No se encontró método list() estándar, intentando acceso directo');
+            // Probar si card existe pero sin list
+            if (tcgdex.card) {
+                cardAccessor = tcgdex.card;
+            } else if (tcgdex.cards) {
+                cardAccessor = tcgdex.cards;
             }
-            
-            // Crear wrapper con las funciones que necesitamos
-            state.tcgdx = {
-                sdk: tcgdex,
-                lang: 'es',
-                Query: Query,
-                // Función para buscar cartas por nombre usando el SDK
-                searchCards: async function(name, page = 1, pageSize = 10) {
-                    try {
-                        let cards = [];
-                        
-                        // Intentar usar Query si está disponible
-                        if (this.Query) {
-                            try {
-                                console.log('Usando Query para buscar:', name);
-                                // Usar Query para buscar por nombre exacto o parcial
-                                cards = await this.sdk.card.list(
-                                    this.Query.create()
-                                        .equal('name', name)
-                                        .paginate(page, pageSize)
-                                );
-                                
-                                // Si no hay resultados con búsqueda exacta, intentar con contains
-                                if (!cards || cards.length === 0) {
-                                    console.log('Búsqueda exacta sin resultados, intentando con contains');
-                                    cards = await this.sdk.card.list(
-                                        this.Query.create()
-                                            .contains('name', name)
-                                            .paginate(page, pageSize)
-                                    );
-                                }
-                                
-                                // Si Query devuelve un objeto con data, extraerlo
-                                if (cards && !Array.isArray(cards)) {
-                                    if (cards.data) {
-                                        cards = cards.data;
-                                    } else if (cards.cards) {
-                                        cards = cards.cards;
-                                    }
-                                }
-                            } catch (queryError) {
-                                console.warn('Error usando Query, usando método alternativo:', queryError);
-                                // Fallback: obtener todas y filtrar
-                                const allCards = await this.sdk.card.list();
-                                const filtered = allCards.filter(card => 
-                                    card.name && card.name.toLowerCase().includes(name.toLowerCase())
-                                );
-                                const startIndex = (page - 1) * pageSize;
-                                cards = filtered.slice(startIndex, startIndex + pageSize);
-                                
-                                return {
-                                    data: cards,
-                                    page: page,
-                                    pageSize: pageSize,
-                                    totalCount: filtered.length,
-                                    hasMore: (startIndex + pageSize) < filtered.length
-                                };
+        }
+        
+        if (!cardAccessor || typeof cardAccessor.list !== 'function') {
+            console.error('❌ No se puede acceder a las cartas del SDK');
+            console.error('Estructura completa:', JSON.stringify(Object.keys(tcgdex), null, 2));
+            throw new Error('No se puede acceder a card.list() del SDK');
+        }
+        
+        // Crear wrapper con las funciones que necesitamos
+        state.tcgdx = {
+            sdk: tcgdex,
+            cardAccessor: cardAccessor,
+            lang: 'es',
+            Query: Query,
+            // Función para buscar cartas por nombre usando el SDK
+            searchCards: async function(name, page = 1, pageSize = 10) {
+                try {
+                    let cards = [];
+                    
+                    // Intentar usar Query si está disponible
+                    if (this.Query && this.cardAccessor && this.cardAccessor.list) {
+                        try {
+                            console.log('Usando Query para buscar:', name);
+                            // Usar Query para buscar por nombre exacto o parcial
+                            const query = this.Query.create()
+                                .equal('name', name)
+                                .paginate(page, pageSize);
+                            
+                            cards = await this.cardAccessor.list(query);
+                            
+                            // Si no hay resultados con búsqueda exacta, intentar con contains
+                            if (!cards || (Array.isArray(cards) && cards.length === 0)) {
+                                console.log('Búsqueda exacta sin resultados, intentando con contains');
+                                const containsQuery = this.Query.create()
+                                    .contains('name', name)
+                                    .paginate(page, pageSize);
+                                cards = await this.cardAccessor.list(containsQuery);
                             }
-                        } else {
-                            // Si no hay Query, obtener todas las cartas y filtrar
-                            console.log('Query no disponible, obteniendo todas las cartas');
-                            const allCards = await this.sdk.card.list();
+                            
+                            // Si Query devuelve un objeto con data, extraerlo
+                            if (cards && !Array.isArray(cards)) {
+                                if (cards.data) {
+                                    cards = cards.data;
+                                } else if (cards.cards) {
+                                    cards = cards.cards;
+                                }
+                            }
+                        } catch (queryError) {
+                            console.warn('Error usando Query, usando método alternativo:', queryError);
+                            // Fallback: obtener todas y filtrar
+                            const allCards = await this.cardAccessor.list();
                             const filtered = allCards.filter(card => 
                                 card.name && card.name.toLowerCase().includes(name.toLowerCase())
                             );
@@ -133,24 +159,49 @@ function initializeSDK(SDK) {
                                 hasMore: (startIndex + pageSize) < filtered.length
                             };
                         }
+                    } else {
+                        // Si no hay Query, obtener todas las cartas y filtrar
+                        console.log('Query no disponible o cardAccessor.list no existe, obteniendo todas las cartas');
                         
-                        // Si Query funcionó, devolver los resultados
-                        const totalCount = Array.isArray(cards) ? cards.length : (cards.totalCount || cards.length || 0);
-                        const cardArray = Array.isArray(cards) ? cards : (cards.data || cards.cards || []);
+                        // Verificar si list existe
+                        if (!this.cardAccessor.list) {
+                            console.error('cardAccessor.list no existe. Métodos disponibles:', Object.keys(this.cardAccessor));
+                            throw new Error('No se puede acceder a card.list()');
+                        }
+                        
+                        const allCards = await this.cardAccessor.list();
+                        const filtered = allCards.filter(card => 
+                            card.name && card.name.toLowerCase().includes(name.toLowerCase())
+                        );
+                        const startIndex = (page - 1) * pageSize;
+                        cards = filtered.slice(startIndex, startIndex + pageSize);
                         
                         return {
-                            data: cardArray,
+                            data: cards,
                             page: page,
                             pageSize: pageSize,
-                            totalCount: totalCount,
-                            hasMore: cardArray.length === pageSize
+                            totalCount: filtered.length,
+                            hasMore: (startIndex + pageSize) < filtered.length
                         };
-                    } catch (error) {
-                        console.error('Error buscando cartas con SDK:', error);
-                        throw error;
                     }
+                    
+                    // Si Query funcionó, devolver los resultados
+                    const totalCount = Array.isArray(cards) ? cards.length : (cards.totalCount || cards.length || 0);
+                    const cardArray = Array.isArray(cards) ? cards : (cards.data || cards.cards || []);
+                    
+                    return {
+                        data: cardArray,
+                        page: page,
+                        pageSize: pageSize,
+                        totalCount: totalCount,
+                        hasMore: cardArray.length === pageSize
+                    };
+                } catch (error) {
+                    console.error('Error buscando cartas con SDK:', error);
+                    throw error;
                 }
-            };
+            }
+        };
         
         console.log('✅ TCGdx SDK inicializado correctamente');
     } catch (error) {

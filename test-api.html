@@ -135,8 +135,30 @@
                         }
                         
                         try {
-                            // Probar obtener todas las cartas
-                            const allCards = await sdk.card.list();
+                            // Verificar estructura del SDK
+                            log('sdk-result', `📋 Estructura del SDK:`, 'info');
+                            log('sdk-result', `- sdk.card: ${sdk.card ? 'existe' : 'no existe'}`, sdk.card ? 'success' : 'error');
+                            log('sdk-result', `- sdk.cards: ${sdk.cards ? 'existe' : 'no existe'}`, sdk.cards ? 'success' : 'error');
+                            log('sdk-result', `- Métodos del SDK: ${Object.keys(sdk).join(', ')}`, 'info');
+                            if (sdk.card) {
+                                log('sdk-result', `- Métodos de card: ${Object.keys(sdk.card).join(', ')}`, 'info');
+                            }
+                            
+                            // Probar diferentes formas de acceder a las cartas
+                            let allCards = null;
+                            if (sdk.card && sdk.card.list) {
+                                log('sdk-result', `🔍 Intentando con sdk.card.list()...`, 'info');
+                                allCards = await sdk.card.list();
+                            } else if (sdk.cards && sdk.cards.list) {
+                                log('sdk-result', `🔍 Intentando con sdk.cards.list()...`, 'info');
+                                allCards = await sdk.cards.list();
+                            } else if (sdk.list) {
+                                log('sdk-result', `🔍 Intentando con sdk.list()...`, 'info');
+                                allCards = await sdk.list();
+                            } else {
+                                throw new Error('No se encontró método para obtener cartas');
+                            }
+                            
                             log('sdk-result', `✅ SDK funciona! Obtuvo ${allCards.length} cartas`, 'success');
                             
                             // Si Query está disponible, probar búsqueda
