@@ -268,16 +268,32 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
     }
     
     try {
-        // Usar la API oficial de Pokémon TCG directamente
-        const queryParams = `q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
-        const url = `${baseUrl}?${queryParams}`;
+        // Detectar si estamos en GitHub Pages y usar proxy de Vercel si está disponible
+        const isGitHubPages = window.location.hostname.includes('github.io');
+        let url;
+        
+        if (isGitHubPages) {
+            // Usar proxy de Vercel desde GitHub Pages
+            const vercelProxy = 'https://poke-capture.vercel.app/api/proxy.js';
+            url = `${vercelProxy}?q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
+        } else {
+            // Usar la API directamente desde localhost (con extensión CORS)
+            const queryParams = `q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
+            url = `${baseUrl}?${queryParams}`;
+        }
+        
+        const headers = {
+            'Accept': 'application/json'
+        };
+        
+        // Solo agregar API key si no estamos usando el proxy (el proxy la maneja internamente)
+        if (!isGitHubPages) {
+            headers['X-Api-Key'] = apiKey;
+        }
         
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'X-Api-Key': apiKey
-            },
+            headers: headers,
             mode: 'cors'
         });
         
@@ -309,25 +325,18 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
                                             (data.page * data.pageSize < data.totalCount);
         }
         
-        // TCGdx devuelve todas las cartas, aplicar paginación manualmente
-        if (page === 1) {
-            // Primera página: guardar todas las cartas
-            state.cardsPagination.allCards = fetchedCards;
+        // La API oficial de Pokémon TCG ya devuelve las cartas paginadas
+        // No necesitamos paginación manual, la API lo hace por nosotros
+        // Actualizar información de paginación basada en la respuesta de la API
+        if (data.totalCount) {
+            state.cardsPagination.totalCount = data.totalCount;
+            const currentPage = data.page || page;
+            const pageSize = data.pageSize || state.cardsPagination.pageSize;
+            state.cardsPagination.hasMore = (currentPage * pageSize) < data.totalCount;
         } else {
-            // Páginas siguientes: usar las cartas ya cargadas
-            fetchedCards = state.cardsPagination.allCards || [];
+            // Si no hay información de paginación, asumir que hay más si recibimos el pageSize completo
+            state.cardsPagination.hasMore = fetchedCards.length === state.cardsPagination.pageSize;
         }
-        
-        const pageSize = state.cardsPagination.pageSize;
-        const startIndex = (page - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-        const paginatedCards = fetchedCards.slice(startIndex, endIndex);
-        
-        // Actualizar información de paginación
-        state.cardsPagination.totalCount = fetchedCards.length;
-        state.cardsPagination.hasMore = endIndex < fetchedCards.length;
-        
-        fetchedCards = paginatedCards;
         
         if (fetchedCards.length === 0 && isFirstLoad) {
             modalLoading.style.display = 'none';
