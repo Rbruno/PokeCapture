@@ -279,7 +279,8 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
             url = `${baseUrl}?${queryParams}`;
         } else {
             // Usar proxy de Vercel desde GitHub Pages o Vercel
-            const vercelProxy = 'https://poke-capture.vercel.app/api/proxy.js';
+            // En Vercel, las funciones en /api se acceden sin la extensión .js
+            const vercelProxy = 'https://poke-capture.vercel.app/api/proxy';
             url = `${vercelProxy}?q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
         }
         

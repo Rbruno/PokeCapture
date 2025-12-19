@@ -1,8 +1,7 @@
 // Vercel Serverless Function para hacer proxy de la API de Pokémon TCG
 // Este archivo debe estar en la carpeta /api para que Vercel lo reconozca
 
-// Vercel soporta ambos formatos, pero module.exports es más compatible
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
     // Configurar CORS para permitir solicitudes desde cualquier origen
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -71,5 +70,5 @@ module.exports = async (req, res) => {
             message: error.message 
         });
     }
-};
+}
 
