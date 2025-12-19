@@ -16,28 +16,83 @@ const state = {
     tcgdx: null // Instancia del SDK de TCGdx
 };
 
-// Inicializar TCGdx usando API REST directamente (más confiable que el SDK)
+// Inicializar TCGdx SDK
 function initTCGdx() {
-    // Usar la API REST de TCGdx directamente
-    // La API es: https://api.tcgdx.dev/v2/{lang}/cards
-    // Según la documentación: https://tcgdx.dev/
+    // Intentar usar el SDK de TCGdx desde el CDN
+    // El SDK se expone como TCGdex (con 'e') según la documentación
+    let SDK = null;
+    
+    // Verificar diferentes formas en que el SDK puede estar expuesto
+    if (typeof TCGdex !== 'undefined') {
+        SDK = TCGdex;
+    } else if (typeof TCGdx !== 'undefined') {
+        SDK = TCGdx;
+    } else if (window.TCGdex) {
+        SDK = window.TCGdex;
+    } else if (window.TCGdx) {
+        SDK = window.TCGdx;
+    }
+    
+    if (SDK) {
+        try {
+            // Inicializar el SDK con español
+            const tcgdex = new SDK('es');
+            
+            // Crear wrapper con las funciones que necesitamos
+            state.tcgdx = {
+                sdk: tcgdex,
+                lang: 'es',
+                // Función para buscar cartas por nombre usando el SDK
+                searchCards: async function(name, page = 1, pageSize = 10) {
+                    try {
+                        // Obtener todas las cartas usando el SDK
+                        const allCards = await this.sdk.card.list();
+                        
+                        // Filtrar por nombre (case-insensitive)
+                        const filtered = allCards.filter(card => 
+                            card.name && card.name.toLowerCase().includes(name.toLowerCase())
+                        );
+                        
+                        // Aplicar paginación
+                        const startIndex = (page - 1) * pageSize;
+                        const paginated = filtered.slice(startIndex, startIndex + pageSize);
+                        
+                        return {
+                            data: paginated,
+                            page: page,
+                            pageSize: pageSize,
+                            totalCount: filtered.length,
+                            hasMore: (startIndex + pageSize) < filtered.length
+                        };
+                    } catch (error) {
+                        console.error('Error buscando cartas con SDK:', error);
+                        throw error;
+                    }
+                }
+            };
+            
+            console.log('✅ TCGdx SDK inicializado correctamente');
+            return;
+        } catch (error) {
+            console.error('Error inicializando SDK:', error);
+        }
+    }
+    
+    // Fallback: usar API REST directamente si el SDK no está disponible
+    console.warn('⚠️ SDK no disponible, usando API REST como fallback');
     state.tcgdx = {
-        lang: 'es', // Idioma español
+        lang: 'es',
         baseUrl: 'https://api.tcgdx.dev/v2',
-        // Función para buscar cartas por nombre
         searchCards: async function(name, page = 1, pageSize = 10) {
-            // Intentar con diferentes URLs base si la primera falla
             const urlsToTry = [
                 `${this.baseUrl}/${this.lang}/cards`,
-                `https://api.tcgdx.dev/v2/${this.lang}/cards`,
-                `https://tcgdx.dev/api/v2/${this.lang}/cards`
+                `https://api.tcgdx.dev/v2/${this.lang}/cards`
             ];
             
             let lastError = null;
             
             for (const url of urlsToTry) {
                 try {
-                    console.log('Intentando con URL:', url);
                     const response = await fetch(url);
                     
                     if (!response.ok) {
@@ -45,15 +100,11 @@ function initTCGdx() {
                     }
                     
                     const data = await response.json();
-                    // La API devuelve un array de cartas
                     const allCards = Array.isArray(data) ? data : (data.data || []);
-                    
-                    // Filtrar por nombre (case-insensitive, busca coincidencias parciales)
                     const filtered = allCards.filter(card => 
                         card.name && card.name.toLowerCase().includes(name.toLowerCase())
                     );
                     
-                    // Aplicar paginación
                     const startIndex = (page - 1) * pageSize;
                     const paginated = filtered.slice(startIndex, startIndex + pageSize);
                     
@@ -65,36 +116,15 @@ function initTCGdx() {
                         hasMore: (startIndex + pageSize) < filtered.length
                     };
                 } catch (error) {
-                    console.warn(`Error con URL ${url}:`, error.message);
                     lastError = error;
-                    // Continuar con la siguiente URL
                     continue;
                 }
             }
             
-            // Si todas las URLs fallaron, lanzar el último error
-            console.error('Todas las URLs de TCGdx fallaron');
             throw lastError || new Error('No se pudo conectar con la API de TCGdx');
-        },
-        // Función para obtener todas las cartas y filtrar (fallback)
-        getAllCards: async function() {
-            try {
-                const url = `${this.baseUrl}/${this.lang}/cards`;
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                
-                const data = await response.json();
-                return Array.isArray(data) ? data : (data.data || []);
-            } catch (error) {
-                console.error('Error obteniendo todas las cartas:', error);
-                throw error;
-            }
         }
     };
-    console.log('✅ TCGdx API inicializada (usando REST API directamente)');
+    console.log('✅ TCGdx API REST inicializada (fallback)');
 }
 
 // Función de inicialización
