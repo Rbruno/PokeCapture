@@ -76,7 +76,9 @@ header p {
 }
 
 #filter-captured,
-#filter-all {
+#filter-all,
+#export-save,
+#import-save {
     padding: 15px 25px;
     border: none;
     border-radius: 25px;
@@ -86,6 +88,14 @@ header p {
     cursor: pointer;
     transition: all 0.3s;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+#export-save:hover,
+#import-save:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
 #filter-captured:hover,

@@ -24,16 +24,186 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Cargar colección desde localStorage
-function loadCollection() {
+async function loadCollection() {
+    // Cargar desde localStorage (siempre disponible)
     const saved = localStorage.getItem('pokemonCollection');
     if (saved) {
-        state.collection = JSON.parse(saved);
+        try {
+            const parsed = JSON.parse(saved);
+            // Si es el formato nuevo con metadata, extraer solo la colección
+            if (parsed.collection) {
+                state.collection = parsed.collection;
+            } else {
+                // Formato antiguo, usar directamente
+                state.collection = parsed;
+            }
+            console.log('✅ Colección cargada desde localStorage');
+        } catch (error) {
+            console.error('Error cargando colección:', error);
+            state.collection = {};
+        }
+    } else {
+        console.log('No hay colección guardada, empezando nueva');
+        state.collection = {};
     }
 }
 
-// Guardar colección en localStorage
+// Guardar colección en localStorage (siempre automático)
 function saveCollection() {
+    // Guardar en localStorage (respaldo automático - siempre funciona)
     localStorage.setItem('pokemonCollection', JSON.stringify(state.collection));
+    
+    // Si hay un file handle guardado (usuario ya dio permiso), guardar automáticamente en archivo
+    if (window.saveFileHandle) {
+        saveToFileHandle();
+    }
+}
+
+// Guardar automáticamente en el archivo si hay permiso
+async function saveToFileHandle() {
+    try {
+        const saveData = {
+            version: '1.0',
+            lastUpdated: new Date().toISOString(),
+            totalCaptured: Object.keys(state.collection).filter(id => state.collection[id].captured).length,
+            collection: state.collection
+        };
+        const jsonString = JSON.stringify(saveData, null, 2);
+        
+        const writable = await window.saveFileHandle.createWritable();
+        await writable.write(jsonString);
+        await writable.close();
+        console.log('✅ Guardado automático en archivo completado');
+    } catch (error) {
+        console.log('⚠️ Error en guardado automático, usando localStorage:', error);
+        // Si falla, eliminar el handle para no seguir intentando
+        window.saveFileHandle = null;
+        localStorage.removeItem('saveFileHandle');
+    }
+}
+
+// Exportar colección a archivo JSON
+async function exportCollection() {
+    const saveData = {
+        version: '1.0',
+        lastUpdated: new Date().toISOString(),
+        totalCaptured: Object.keys(state.collection).filter(id => state.collection[id].captured).length,
+        collection: state.collection
+    };
+    
+    const jsonString = JSON.stringify(saveData, null, 2);
+    
+    // Intentar usar File System Access API (Chrome/Edge)
+    if ('showSaveFilePicker' in window) {
+        try {
+            const fileHandle = await window.showSaveFilePicker({
+                suggestedName: 'pokeCapture_save.json',
+                types: [{
+                    description: 'Archivo JSON de guardado',
+                    accept: { 'application/json': ['.json'] }
+                }]
+            });
+            
+            // Guardar el handle para futuras exportaciones automáticas
+            window.saveFileHandle = fileHandle;
+            localStorage.setItem('saveFileHandle', JSON.stringify({ name: fileHandle.name }));
+            
+            const writable = await fileHandle.createWritable();
+            await writable.write(jsonString);
+            await writable.close();
+            
+            alert('✅ Colección guardada en archivo exitosamente');
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                // Si falla, usar descarga tradicional
+                downloadSaveFile(jsonString);
+            }
+        }
+    } else {
+        // Navegadores sin File System Access API - usar descarga tradicional
+        downloadSaveFile(jsonString);
+    }
+}
+
+// Descargar archivo de guardado (método tradicional)
+function downloadSaveFile(jsonString) {
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pokeCapture_save_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Importar colección desde archivo JSON
+async function importCollection() {
+    // Intentar usar File System Access API
+    if ('showOpenFilePicker' in window) {
+        try {
+            const [fileHandle] = await window.showOpenFilePicker({
+                types: [{
+                    description: 'Archivo JSON de guardado',
+                    accept: { 'application/json': ['.json'] }
+                }]
+            });
+            
+            const file = await fileHandle.getFile();
+            const text = await file.text();
+            const saveData = JSON.parse(text);
+            
+            if (saveData.collection) {
+                state.collection = saveData.collection;
+                saveCollection(); // Guardar también en localStorage
+                renderPokemon();
+                updateStats();
+                alert('✅ Colección cargada desde archivo exitosamente');
+            } else {
+                alert('❌ El archivo no tiene el formato correcto');
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                // Si falla, usar input file tradicional
+                importCollectionTraditional();
+            }
+        }
+    } else {
+        // Navegadores sin File System Access API
+        importCollectionTraditional();
+    }
+}
+
+// Importar colección usando input file tradicional
+function importCollectionTraditional() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const saveData = JSON.parse(event.target.result);
+                    if (saveData.collection) {
+                        state.collection = saveData.collection;
+                        saveCollection(); // Guardar también en localStorage
+                        renderPokemon();
+                        updateStats();
+                        alert('✅ Colección cargada desde archivo exitosamente');
+                    } else {
+                        alert('❌ El archivo no tiene el formato correcto');
+                    }
+                } catch (error) {
+                    alert('❌ Error al leer el archivo: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+    input.click();
 }
 
 // Configurar event listeners
@@ -42,6 +212,8 @@ function setupEventListeners() {
     document.getElementById('filter-captured').addEventListener('click', () => setFilterMode('captured'));
     document.getElementById('filter-all').addEventListener('click', () => setFilterMode('all'));
     document.getElementById('close-modal').addEventListener('click', closeModal);
+    document.getElementById('export-save').addEventListener('click', exportCollection);
+    document.getElementById('import-save').addEventListener('click', importCollection);
     
     // Cerrar modal al hacer click fuera
     window.addEventListener('click', (e) => {
@@ -50,6 +222,24 @@ function setupEventListeners() {
             closeModal();
         }
     });
+}
+
+// Configurar handlers para guardado automático
+function setupSaveFileHandlers() {
+    // Intentar restaurar file handle si existe
+    restoreFileHandle();
+    
+    // Guardar antes de cerrar la página
+    window.addEventListener('beforeunload', () => {
+        saveCollection();
+    });
+    
+    // Guardar periódicamente cada 30 segundos si hay cambios
+    setInterval(() => {
+        if (Object.keys(state.collection).length > 0) {
+            saveCollection();
+        }
+    }, 30000);
 }
 
 // Cargar lista de Pokémon desde PokeAPI
