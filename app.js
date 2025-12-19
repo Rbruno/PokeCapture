@@ -18,22 +18,77 @@ const state = {
 
 // Inicializar TCGdx SDK
 function initTCGdx() {
+    // El SDK puede estar expuesto como TCGdx o TCGdex (verificar ambos)
+    let SDK = null;
+    
     if (typeof TCGdx !== 'undefined') {
-        // Usar español como idioma por defecto
-        state.tcgdx = new TCGdx('es');
-        console.log('✅ TCGdx SDK inicializado');
+        SDK = TCGdx;
+    } else if (typeof TCGdex !== 'undefined') {
+        SDK = TCGdex;
+    } else if (window.TCGdx) {
+        SDK = window.TCGdx;
+    } else if (window.TCGdex) {
+        SDK = window.TCGdex;
+    }
+    
+    if (SDK) {
+        try {
+            // Usar español como idioma por defecto
+            state.tcgdx = new SDK('es');
+            console.log('✅ TCGdx SDK inicializado');
+        } catch (error) {
+            console.error('❌ Error inicializando TCGdx SDK:', error);
+        }
     } else {
-        console.error('❌ TCGdx SDK no está disponible');
+        // Intentar de nuevo después de un breve delay si el script aún se está cargando
+        setTimeout(() => {
+            let SDKRetry = null;
+            if (typeof TCGdx !== 'undefined') {
+                SDKRetry = TCGdx;
+            } else if (typeof TCGdex !== 'undefined') {
+                SDKRetry = TCGdex;
+            } else if (window.TCGdx) {
+                SDKRetry = window.TCGdx;
+            } else if (window.TCGdex) {
+                SDKRetry = window.TCGdex;
+            }
+            
+            if (SDKRetry) {
+                try {
+                    state.tcgdx = new SDKRetry('es');
+                    console.log('✅ TCGdx SDK inicializado (retry)');
+                } catch (error) {
+                    console.error('❌ Error inicializando TCGdx SDK:', error);
+                }
+            } else {
+                console.error('❌ TCGdx SDK no está disponible. Verifica que el script se haya cargado correctamente.');
+                console.log('Variables disponibles en window:', Object.keys(window).filter(k => k.includes('TCG')));
+            }
+        }, 1000);
     }
 }
 
-// Inicialización
-document.addEventListener('DOMContentLoaded', async () => {
+// Función de inicialización
+async function initializeApp() {
+    // Esperar un momento para que el SDK se cargue completamente
+    await new Promise(resolve => setTimeout(resolve, 300));
     initTCGdx();
     await loadCollection();
     loadPokemon();
     setupEventListeners();
     setupSaveFileHandlers();
+}
+
+// Inicialización cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', initializeApp);
+
+// También intentar cuando la ventana se carga completamente (por si el SDK se carga después)
+window.addEventListener('load', () => {
+    if (!state.tcgdx) {
+        setTimeout(() => {
+            initTCGdx();
+        }, 500);
+    }
 });
 
 // Cargar colección desde localStorage
@@ -235,6 +290,20 @@ function setupEventListeners() {
             closeModal();
         }
     });
+}
+
+// Intentar restaurar file handle guardado (solo para referencia, no se puede restaurar directamente)
+function restoreFileHandle() {
+    try {
+        const saved = localStorage.getItem('saveFileHandle');
+        if (saved) {
+            console.log('Se encontró referencia a archivo guardado anteriormente');
+            // Nota: No podemos restaurar el handle directamente por seguridad del navegador
+            // El usuario necesitará usar el botón de exportar nuevamente para activar el guardado automático
+        }
+    } catch (error) {
+        console.log('No se pudo restaurar file handle');
+    }
 }
 
 // Configurar handlers para guardado automático
