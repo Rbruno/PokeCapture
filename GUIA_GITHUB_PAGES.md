@@ -29,8 +29,8 @@
 Abre PowerShell o Terminal y ejecuta:
 
 ```bash
-git config --global user.name "Tu Nombre"
-git config --global user.email "tu-email@ejemplo.com"
+git config --global user.name "Rodrigo"
+git config --global user.email "rodrigobruno74@gmail.com"
 ```
 
 Reemplaza con tu nombre y email real.
@@ -96,7 +96,7 @@ GitHub te mostrará comandos. Usa estos:
 
 ```bash
 git branch -M main
-git remote add origin https://github.com/TU-USUARIO/PokeCapture.git
+git remote add origin https://github.com/Rbruno/PokeCapture.git
 ```
 
 **⚠️ IMPORTANTE**: Reemplaza `TU-USUARIO` con tu nombre de usuario de GitHub.
@@ -145,7 +145,7 @@ Te pedirá tu usuario y contraseña de GitHub. Si tienes autenticación de dos f
 2. Verás un mensaje verde: "Your site is live at..."
 3. Tu aplicación estará disponible en:
    ```
-   https://TU-USUARIO.github.io/PokeCapture/
+   https://Rbruno.github.io/PokeCapture/
    ```
 
 **¡Listo!** 🎉 Tu aplicación está en línea y CORS no será un problema.
@@ -189,6 +189,6 @@ Asegúrate de que tu usuario y token sean correctos.
 
 - **GitHub Pages es GRATIS** para repositorios públicos
 - Tu sitio se actualiza automáticamente cuando haces `git push`
-- La URL será: `https://TU-USUARIO.github.io/PokeCapture/`
+- La URL será: `https://Rbruno.github.io/PokeCapture/`
 - **CORS no será un problema** porque se sirve desde `https://` en lugar de `localhost`
 

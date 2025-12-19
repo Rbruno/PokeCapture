@@ -267,20 +267,54 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
     }
     
     try {
-        // Usar URL directa (la extensión CORS debería manejar esto)
-        const url = `${baseUrl}?q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
+        // La API de Pokémon TCG bloquea CORS incluso desde GitHub Pages
+        // Intentar múltiples estrategias: proxy con headers, proxy sin headers, directo
+        const queryParams = `q=${query}&page=${page}&pageSize=${state.cardsPagination.pageSize}`;
+        const targetUrl = `${baseUrl}?${queryParams}`;
         
-        // Hacer la solicitud sin timeout personalizado
-        // El navegador manejará los timeouts naturales
-        // Si la extensión CORS añade latencia, es mejor no limitar el tiempo
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'X-Api-Key': apiKey
-            },
-            mode: 'cors'
-        });
+        let response;
+        let lastError;
+        
+        // Estrategia 1: Intentar directamente (puede funcionar desde GitHub Pages en algunos casos)
+        try {
+            console.log('Intentando solicitud directa...');
+            response = await fetch(targetUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Api-Key': apiKey
+                },
+                mode: 'cors'
+            });
+            
+            if (response.ok) {
+                console.log('✅ Solicitud directa funcionó');
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (directError) {
+            console.log('❌ Solicitud directa falló, usando proxy...');
+            lastError = directError.message;
+            
+            // Estrategia 2: Usar proxy CORS público
+            // Nota: Los proxies públicos no pasan headers, así que la API key no se enviará
+            // La API puede funcionar sin key con límites, o rechazar la solicitud
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+            
+            response = await fetch(proxyUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                mode: 'cors'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Proxy error: HTTP ${response.status}`);
+            }
+            
+            console.log('✅ Proxy funcionó (nota: API key no se envió)');
+        }
         
         // Si es 504 y es el primer intento, reintentar
         if (response.status === 504 && retryCount < 2) {
@@ -299,7 +333,23 @@ async function loadCardsPage(pokemon, page, query, baseUrl, apiKey, isFirstLoad 
             throw new Error(`Error HTTP ${response.status}`);
         }
         
-        const data = await response.json();
+        let data;
+        let responseText = await response.text();
+        
+        // El proxy allorigins.win devuelve el contenido en un objeto con el campo "contents"
+        try {
+            const proxyResponse = JSON.parse(responseText);
+            if (proxyResponse.contents) {
+                // Si el proxy envuelve la respuesta, extraer el contenido
+                data = JSON.parse(proxyResponse.contents);
+            } else {
+                data = proxyResponse;
+            }
+        } catch (e) {
+            // Si no está envuelto, parsear directamente
+            data = JSON.parse(responseText);
+        }
+        
         let fetchedCards = [];
         
         if (data.data && Array.isArray(data.data)) {
