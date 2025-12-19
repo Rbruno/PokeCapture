@@ -34,66 +34,87 @@ function initTCGdx() {
     }
     
     if (SDK) {
-        try {
-            // Inicializar el SDK con español
-            const tcgdex = new SDK('es');
-            
-            // Crear wrapper con las funciones que necesitamos
-            state.tcgdx = {
-                sdk: tcgdex,
-                lang: 'es',
-                // Función para buscar cartas por nombre usando el SDK
-                searchCards: async function(name, page = 1, pageSize = 10) {
-                    try {
-                        // Obtener todas las cartas usando el SDK
-                        const allCards = await this.sdk.card.list();
-                        
-                        // Filtrar por nombre (case-insensitive)
-                        const filtered = allCards.filter(card => 
-                            card.name && card.name.toLowerCase().includes(name.toLowerCase())
-                        );
-                        
-                        // Aplicar paginación
-                        const startIndex = (page - 1) * pageSize;
-                        const paginated = filtered.slice(startIndex, startIndex + pageSize);
-                        
-                        return {
-                            data: paginated,
-                            page: page,
-                            pageSize: pageSize,
-                            totalCount: filtered.length,
-                            hasMore: (startIndex + pageSize) < filtered.length
-                        };
-                    } catch (error) {
-                        console.error('Error buscando cartas con SDK:', error);
-                        throw error;
-                    }
-                }
-            };
-            
-            console.log('✅ TCGdx SDK inicializado correctamente');
-            return;
-        } catch (error) {
-            console.error('Error inicializando SDK:', error);
-        }
+        initializeSDK(SDK);
+        return;
     }
     
     // Fallback: usar API REST directamente si el SDK no está disponible
+    initializeRESTFallback();
+}
+
+// Función para inicializar el SDK
+function initializeSDK(SDK) {
+    try {
+        // Inicializar el SDK con español
+        const tcgdex = new SDK('es');
+        
+        // Crear wrapper con las funciones que necesitamos
+        state.tcgdx = {
+            sdk: tcgdex,
+            lang: 'es',
+            // Función para buscar cartas por nombre usando el SDK
+            searchCards: async function(name, page = 1, pageSize = 10) {
+                try {
+                    // Obtener todas las cartas usando el SDK
+                    const allCards = await this.sdk.card.list();
+                    
+                    // Filtrar por nombre (case-insensitive)
+                    const filtered = allCards.filter(card => 
+                        card.name && card.name.toLowerCase().includes(name.toLowerCase())
+                    );
+                    
+                    // Aplicar paginación
+                    const startIndex = (page - 1) * pageSize;
+                    const paginated = filtered.slice(startIndex, startIndex + pageSize);
+                    
+                    return {
+                        data: paginated,
+                        page: page,
+                        pageSize: pageSize,
+                        totalCount: filtered.length,
+                        hasMore: (startIndex + pageSize) < filtered.length
+                    };
+                } catch (error) {
+                    console.error('Error buscando cartas con SDK:', error);
+                    throw error;
+                }
+            }
+        };
+        
+        console.log('✅ TCGdx SDK inicializado correctamente');
+    } catch (error) {
+        console.error('Error inicializando SDK:', error);
+        initializeRESTFallback();
+    }
+}
+
+// Función para inicializar el fallback REST
+function initializeRESTFallback() {
     console.warn('⚠️ SDK no disponible, usando API REST como fallback');
     state.tcgdx = {
         lang: 'es',
-        baseUrl: 'https://api.tcgdx.dev/v2',
+        // Probar diferentes URLs base - la API de TCGdx puede estar en diferentes dominios
         searchCards: async function(name, page = 1, pageSize = 10) {
+            // Intentar diferentes URLs según la documentación de TCGdx
             const urlsToTry = [
-                `${this.baseUrl}/${this.lang}/cards`,
-                `https://api.tcgdx.dev/v2/${this.lang}/cards`
+                `https://api.tcgdx.dev/v2/${this.lang}/cards`,
+                `https://tcgdx.dev/api/v2/${this.lang}/cards`,
+                `https://api.tcgdex.dev/v2/${this.lang}/cards`,
+                `https://tcgdex.dev/api/v2/${this.lang}/cards`
             ];
             
             let lastError = null;
             
             for (const url of urlsToTry) {
                 try {
-                    const response = await fetch(url);
+                    console.log('Intentando con URL:', url);
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        mode: 'cors',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
                     
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`);
@@ -108,6 +129,7 @@ function initTCGdx() {
                     const startIndex = (page - 1) * pageSize;
                     const paginated = filtered.slice(startIndex, startIndex + pageSize);
                     
+                    console.log(`✅ Conectado a TCGdx usando: ${url}`);
                     return {
                         data: paginated,
                         page: page,
@@ -116,12 +138,14 @@ function initTCGdx() {
                         hasMore: (startIndex + pageSize) < filtered.length
                     };
                 } catch (error) {
+                    console.warn(`❌ Error con URL ${url}:`, error.message);
                     lastError = error;
                     continue;
                 }
             }
             
-            throw lastError || new Error('No se pudo conectar con la API de TCGdx');
+            console.error('❌ Todas las URLs de TCGdx fallaron');
+            throw lastError || new Error('No se pudo conectar con la API de TCGdx. Verifica tu conexión a internet.');
         }
     };
     console.log('✅ TCGdx API REST inicializada (fallback)');
